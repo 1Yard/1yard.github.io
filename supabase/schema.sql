@@ -80,6 +80,13 @@ create table if not exists public.job_signups (
   unique (job_id, volunteer_id)
 );
 
+-- When a volunteer is removed, keep their completed jobs on record (with no
+-- name) so their partners' shadow-shift counts don't change.
+alter table public.job_signups alter column volunteer_id drop not null;
+alter table public.job_signups drop constraint if exists job_signups_volunteer_id_fkey;
+alter table public.job_signups add constraint job_signups_volunteer_id_fkey
+  foreign key (volunteer_id) references public.profiles(id) on delete set null;
+
 -- ---------- Helpers ---------------------------------------------------
 
 create or replace function public.local_today() returns date
@@ -117,7 +124,7 @@ create or replace function public.shadow_count(vid uuid) returns int
 language sql stable security definer set search_path = public as $$
   select count(*)::int from job_signups s join jobs j on j.id = s.job_id
   where s.volunteer_id = vid and s.as_trainee and j.status = 'done'
-    and exists (select 1 from job_signups p where p.job_id = s.job_id and p.volunteer_id <> vid and not p.as_trainee)
+    and exists (select 1 from job_signups p where p.job_id = s.job_id and p.volunteer_id is distinct from vid and not p.as_trainee)
 $$;
 
 create or replace function public.jobs_done(vid uuid) returns int
@@ -325,6 +332,30 @@ begin
   if not found then raise exception 'Your application needs to be approved first'; end if;
 end $$;
 
+-- ---------- Admin functions ------------------------------------------
+
+-- Remove a volunteer's account. Frees their spots on upcoming jobs; completed
+-- jobs stay on record without their name. They can apply again later.
+create or replace function public.admin_remove_volunteer(vid uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare jids uuid[];
+begin
+  if not is_admin() then raise exception 'Admins only'; end if;
+  if vid = auth.uid() then raise exception 'You can''t remove your own account'; end if;
+  if exists (select 1 from profiles where id = vid and role = 'admin') then
+    raise exception 'This person is an admin. Remove their admin rights first.';
+  end if;
+  with d as (
+    delete from job_signups s using jobs j
+    where s.job_id = j.id and j.status in ('review', 'scheduled') and s.volunteer_id = vid
+    returning s.job_id)
+  select coalesce(array_agg(job_id), '{}') into jids from d;
+  update jobs set told_at = null where id = any(jids);
+  update jobs set date = null, start_time = null, time_changed_at = null
+  where id = any(jids) and not exists (select 1 from job_signups where job_id = jobs.id);
+  delete from auth.users where id = vid;   -- profile goes with it
+end $$;
+
 -- ---------- Client functions (no login) ------------------------------
 
 create or replace function public.submit_request(p jsonb) returns uuid
@@ -418,7 +449,7 @@ grant execute on function public.submit_request(jsonb), public.get_request(uuid)
   public.cancel_request(uuid), public.ping() to anon, authenticated;
 grant execute on function public.volunteer_board(), public.join_job(uuid, date, text),
   public.change_my_time(uuid, date, text), public.leave_job(uuid), public.finish_job(uuid),
-  public.complete_training(text) to authenticated;
+  public.complete_training(text), public.admin_remove_volunteer(uuid) to authenticated;
 
 -- Internal helpers shouldn't be callable from the website.
 revoke execute on function public.handle_new_user() from public, anon, authenticated;
@@ -435,6 +466,11 @@ drop policy if exists "volunteer uploads own waiver" on storage.objects;
 create policy "volunteer uploads own waiver" on storage.objects
   for insert to authenticated
   with check (bucket_id = 'waivers' and (storage.foldername(name))[1] = auth.uid()::text);
+
+drop policy if exists "admin deletes waiver" on storage.objects;
+create policy "admin deletes waiver" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'waivers' and public.is_admin());
 
 drop policy if exists "owner or admin reads waiver" on storage.objects;
 create policy "owner or admin reads waiver" on storage.objects

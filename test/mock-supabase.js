@@ -18,7 +18,7 @@ const ready = (async () => {
   // Return dates/timestamps as text like Supabase's API does (not JS Date objects).
   const db = new PGlite({ parsers: { 1082: (v) => v, 1114: (v) => new Date(v + "Z").toISOString(), 1184: (v) => new Date(v).toISOString() } });
   await db.exec(STUBS);
-  await db.exec(await (await fetch("../supabase/schema.sql")).text());
+  await db.exec(await (await fetch("../supabase/schema.sql", { cache: "no-store" })).text());
   await db.exec(`grant usage on schema public, storage to anon, authenticated;
 
     grant all on storage.objects to authenticated; alter table storage.objects enable row level security;`);
@@ -95,6 +95,7 @@ window.supabase = {
         from(bucket) {
           return {
             async upload(path) { const r = await run(`insert into storage.objects (bucket_id, name) values ($1, $2)`, [bucket, path]); return r.error ? r : { data: { path }, error: null }; },
+            async remove(paths) { await run(`delete from storage.objects where bucket_id = $1 and name = any($2)`, [bucket, paths]); return { data: [], error: null }; },
             async createSignedUrl(path) { return { data: { signedUrl: "about:blank#" + path }, error: null }; },
           };
         },

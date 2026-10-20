@@ -112,7 +112,7 @@ function slots(j) {
   const c = crew(j.id);
   return `<div class="slots">${[0, 1].map((i) => {
     const s = c[i];
-    if (s) return `<div class="slot ${s.asTrainee ? "trainee" : "exp"}"><b>${esc(vol(s.vid)?.name)}</b>${s.asTrainee ? "Trainee" : "Experienced"}</div>`;
+    if (s) return `<div class="slot ${s.asTrainee ? "trainee" : "exp"}"><b>${esc(vol(s.vid)?.name || "Former volunteer")}</b>${s.asTrainee ? "Trainee" : "Experienced"}</div>`;
     if (needsExperienced(j)) return `<div class="slot empty exp-only"><b>Open spot</b>Experienced only</div>`;
     return `<div class="slot empty"><b>Open spot</b>Anyone trained</div>`;
   }).join("")}</div>`;
@@ -621,13 +621,16 @@ function volsTable(people) {
   const list = [...people].sort((a, b) => order[a.status] - order[b.status]);
   if (!list.length) return `<div class="empty">No volunteers yet.</div>`;
   return `<div class="card table-wrap"><table>
-    <thead><tr><th>Volunteer</th><th>Level</th><th>Shadow shifts</th><th>Jobs done</th><th>Waiver</th></tr></thead>
+    <thead><tr><th>Volunteer</th><th>Level</th><th>Shadow shifts</th><th>Jobs done</th><th>Waiver</th><th></th></tr></thead>
     <tbody>${list.map((v) => `<tr>
       <td><b>${esc(v.name)}</b><div class="muted small">${esc(v.uni)} · ${esc(v.year)}<br>${esc(v.email)} · ${esc(v.phone)}</div></td>
       <td><select class="in" data-level="${v.id}" aria-label="Level for ${esc(v.name)}" style="min-width:190px">${Object.entries(V_STATUS).map(([k, [label]]) => `<option value="${k}" ${k === v.status ? "selected" : ""}>${label}</option>`).join("")}</select></td>
       <td class="num">${v.status === "trainee" ? `<b>${shadowCount(v.id)} of ${SHADOW_SHIFTS_NEEDED}</b>` : v.status === "experienced" ? "Complete" : "—"}</td>
       <td class="num">${jobsDone(v.id)}</td>
       <td class="small">${v.waiverPath ? `<button class="btn ghost" data-act="waiver" data-id="${v.id}">📄 Open waiver</button>` : `<span class="muted">—</span>`}</td>
+      <td>${S.confirm === "rmvol:" + v.id
+        ? `<div class="confirm" style="min-width:220px"><b>Remove ${esc(first(v.name))}?</b><span class="small">Deletes their account and frees any upcoming jobs. They can apply again later.</span><div class="row"><button class="btn danger" data-act="rmVolYes" data-id="${v.id}">Yes, remove</button><button class="btn ghost" data-act="confirmNo">Cancel</button></div></div>`
+        : `<button class="btn danger" data-act="rmVol" data-id="${v.id}">Remove</button>`}</td>
     </tr>`).join("")}</tbody></table></div>`;
 }
 
@@ -696,6 +699,14 @@ const A = {
     const { data, error } = await sb.storage.from("waivers").createSignedUrl(vol(id).waiverPath, 300);
     if (error) { win?.close(); throw error; }
     if (win) win.location = data.signedUrl; else location.href = data.signedUrl;
+  },
+  rmVol: (id) => { S.confirm = "rmvol:" + id; },
+  rmVolYes: async (id) => {
+    const v = vol(id);
+    if (v.waiverPath) await sb.storage.from("waivers").remove([v.waiverPath]); // best effort; account removal is what matters
+    await rpc("admin_remove_volunteer", { vid: id });
+    S.confirm = null; await loadAdmin();
+    return `${v.name} was removed.`;
   },
   done: async (id) => {
     const promoted = await rpc("finish_job", { p_job: id });
