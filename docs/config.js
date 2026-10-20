@@ -2,8 +2,8 @@
 // The Supabase URL and publishable/anon key are meant to be public — the database
 // access rules protect the data. NEVER put the "service_role" / secret key here.
 window.ONEYARD_CONFIG = {
-  supabaseUrl: "",       // e.g. "https://abcdefghijkl.supabase.co"
-  supabaseAnonKey: "",   // Project Settings → API Keys → publishable (or legacy "anon public") key
+  supabaseUrl: "https://ybjaifvfgparclbeliue.supabase.co",
+  supabaseAnonKey: "sb_publishable_Gj6l_Yw-E8-2NrcHEud1SQ_QMOb9ILE",
 
   officePhone: "(613) 555-0100",   // shown to clients — replace with the real number
 
