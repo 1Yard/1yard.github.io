@@ -624,7 +624,7 @@ function volsTable(people) {
     <thead><tr><th>Volunteer</th><th>Level</th><th>Shadow shifts</th><th>Jobs done</th><th>Waiver</th></tr></thead>
     <tbody>${list.map((v) => `<tr>
       <td><b>${esc(v.name)}</b><div class="muted small">${esc(v.uni)} · ${esc(v.year)}<br>${esc(v.email)} · ${esc(v.phone)}</div></td>
-      <td>${vChip(v.status)}</td>
+      <td><select class="in" data-level="${v.id}" aria-label="Level for ${esc(v.name)}" style="min-width:190px">${Object.entries(V_STATUS).map(([k, [label]]) => `<option value="${k}" ${k === v.status ? "selected" : ""}>${label}</option>`).join("")}</select></td>
       <td class="num">${v.status === "trainee" ? `<b>${shadowCount(v.id)} of ${SHADOW_SHIFTS_NEEDED}</b>` : v.status === "experienced" ? "Complete" : "—"}</td>
       <td class="num">${jobsDone(v.id)}</td>
       <td class="small">${v.waiverPath ? `<button class="btn ghost" data-act="waiver" data-id="${v.id}">📄 Open waiver</button>` : `<span class="muted">—</span>`}</td>
@@ -796,8 +796,28 @@ document.addEventListener("input", (e) => {
   const k = e.target.dataset.w;
   if (k && S.wiz) S.wiz.d[k] = e.target.type === "checkbox" ? e.target.checked : e.target.value;
 });
-document.addEventListener("change", (e) => {
+document.addEventListener("change", async (e) => {
   const id = e.target.id;
+  // Admin override of a volunteer's level (e.g. skip shadow shifts for someone experienced).
+  if (e.target.dataset.level) {
+    const v = vol(e.target.dataset.level), status = e.target.value, sel = e.target;
+    sel.disabled = true;
+    try {
+      const patch = { status };
+      if (status === "experienced") patch.promoted_at = now();
+      if ((status === "trainee" || status === "experienced") && !v.trainedAt) patch.trained_at = now();
+      if (v.status === "pending") patch.reviewed_at = now();
+      await upd("profiles", v.id, patch);
+      // A promoted volunteer no longer counts as a trainee on jobs they're already signed up for.
+      if (status === "experienced") {
+        const open = S.signups.filter((s) => s.vid === v.id && s.asTrainee && job(s.jobId)?.status === "scheduled");
+        for (const s of open) must(await sb.from("job_signups").update({ as_trainee: false }).eq("id", s.id));
+      }
+      await loadAdmin(); render();
+      toast(`${v.name} is now: ${V_STATUS[status][0]}.`);
+    } catch (err) { toast(err?.message || "Couldn't change the level."); render(); }
+    return;
+  }
   if (id === "waiver-file" || id === "done-training") {
     const f = $("#waiver-file").files[0], isPdf = f && (f.type === "application/pdf" || /\.pdf$/i.test(f.name));
     $("#file-note").textContent = !f ? "No file chosen yet." : isPdf ? `📄 ${f.name}` : "That file isn't a PDF. Upload the signed waiver as a PDF.";

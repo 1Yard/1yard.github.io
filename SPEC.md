@@ -9,7 +9,7 @@ Service area: **Kingston, ON** (team based at Queen's). This doc is the contract
 |---|---|---|
 | Client | Signs up while sending their first request | Send a request (**one open request at a time**), see status, cancel |
 | Volunteer | Applies via form (**university students only**: school email, university, year) | See their stage; once trained: job board, sign up / leave, mark done |
-| Admin | Manually flagged in DB | Approve/decline volunteers, review + schedule requests, **edit request/client details** after calling the client, cancel/mark jobs done |
+| Admin | Manually flagged in DB | Approve/decline volunteers, review + schedule requests, **edit request/client details** after calling the client, **set any volunteer's level directly** (e.g. skip shadow shifts), cancel/mark jobs done |
 
 ## Volunteer lifecycle
 
