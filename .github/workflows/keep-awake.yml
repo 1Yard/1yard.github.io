@@ -1,0 +1,18 @@
+# Supabase pauses free projects after a week with no activity.
+# This pings the database twice a week so the site never goes to sleep. Free on GitHub.
+name: Keep Supabase awake
+on:
+  schedule:
+    - cron: "0 14 * * 1,4"   # Mondays and Thursdays
+  workflow_dispatch:          # lets you run it by hand from the Actions tab
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ping the database
+        run: |
+          URL=$(grep -oE 'supabaseUrl: *"[^"]+"' docs/config.js | sed -E 's/.*"([^"]+)"/\1/')
+          KEY=$(grep -oE 'supabaseAnonKey: *"[^"]+"' docs/config.js | sed -E 's/.*"([^"]+)"/\1/')
+          if [ -z "$URL" ]; then echo "docs/config.js has no Supabase URL yet"; exit 0; fi
+          curl -fsS -X POST "$URL/rest/v1/rpc/ping" -H "apikey: $KEY" -H "Content-Type: application/json" -d '{}'

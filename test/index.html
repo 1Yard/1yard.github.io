@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>1Yard · LOCAL TEST</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@600;700&display=swap">
+<link rel="stylesheet" href="../docs/style.css">
+</head>
+<body>
+<!-- Local test harness: the real site (docs/app.js) running against an in-browser copy of the database. -->
+<header class="topbar"><div class="topbar-inner">
+  <button class="brand" data-act="go" data-id="home">1Yard <small>local test</small></button>
+  <nav class="nav" id="nav"></nav>
+</div></header>
+<div class="season" id="season"></div>
+<main><div class="wrap" id="app"><div class="loading">Starting test database…</div></div></main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script>
+// Test accounts (local only): admin@test.ca / testpass1, sam@test.ca / testpass1 (experienced)
+window.SEED = async (db) => {
+  const mk = async (email, name, meta = {}) => (await db.query(`insert into auth.users (email, password, raw_user_meta_data) values ($1, 'testpass1', $2) returning id`, [email, JSON.stringify({ name, phone: "(613) 555-01" + Math.floor(10 + Math.random() * 89), university: "Queen's University", year: "3rd year", skills: ["raking", "lifting"], availability: ["Weekends"], why: "Test", ...meta })])).rows[0].id;
+  const admin = await mk("admin@test.ca", "Ada Admin");
+  await db.query(`update profiles set role = 'admin', status = 'experienced' where id = $1`, [admin]);
+  const sam = await mk("sam@test.ca", "Sam Okafor", { skills: ["raking", "mower", "lifting"] });
+  await db.query(`update profiles set status = 'experienced' where id = $1`, [sam]);
+};
+</script>
+<script type="module">
+  import "./mock-supabase.js";
+  await window.supabase.__ready;
+  for (const src of ["../docs/config.js", "../docs/app.js"]) {
+    await new Promise((res) => { const s = document.createElement("script"); s.src = src; s.onload = res; document.body.appendChild(s); });
+    if (src.endsWith("config.js")) Object.assign(window.ONEYARD_CONFIG, { supabaseUrl: "http://mock.local", supabaseAnonKey: "test" });
+  }
+</script>
+</body>
+</html>

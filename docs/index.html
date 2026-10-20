@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>1Yard · Yard help in Kingston</title>
+<meta name="description" content="Free outdoor yard help for seniors and people with physical limitations in Kingston, ON, from 1Yard's university student volunteers.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@600;700&display=swap">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 38 30'%3E%3Crect x='18' y='12' width='2' height='17' fill='%233A4E10'/%3E%3Cellipse cx='19' cy='9' rx='6' ry='9' fill='%23577518'/%3E%3C/svg%3E">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <button class="brand" data-act="go" data-id="home" aria-label="1Yard home">
+      <svg viewBox="0 0 38 30" aria-hidden="true"><rect x="6" y="14" width="2" height="15" fill="#3A4E10"/><circle cx="7" cy="12" r="6" fill="#749C20"/><rect x="18" y="12" width="2" height="17" fill="#3A4E10"/><ellipse cx="19" cy="9" rx="6" ry="9" fill="#577518"/><rect x="30" y="16" width="2" height="13" fill="#3A4E10"/><circle cx="31" cy="14" r="5.5" fill="#8DB83A"/></svg>
+      1Yard
+    </button>
+    <nav class="nav" id="nav"></nav>
+  </div>
+</header>
+<div class="season" id="season"></div>
+<main><div class="wrap" id="app"><div class="loading">Loading…</div></div></main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
