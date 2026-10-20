@@ -33,10 +33,10 @@ Supabase's built-in email sender is for testing only. Admin approval already sto
 3. Never use the **secret / service_role** key anywhere in this project.
 
 ### 5. Put the site online with GitHub Pages
-1. Sign up at **github.com** (free) and create a **public** repository called `1yard-portal`.
+1. Sign up at **github.com** (free) and create a free organization called `1yard`, then a **public** repository in it called `1yard.github.io`.
 2. Upload this folder to it (see "Updating the site" below).
 3. Repo **Settings → Pages** → Source: **Deploy from a branch** → Branch: `main`, folder: `/docs` → Save.
-4. After a minute the site is live at `https://YOUR-USERNAME.github.io/1yard-portal/`.
+4. After a minute the site is live at `https://1yard.github.io/`.
 5. Back in Supabase: **Authentication → URL Configuration** → set **Site URL** to that address.
 
 ### 6. Make yourself an admin
