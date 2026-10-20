@@ -20,7 +20,7 @@ const ready = (async () => {
   await db.exec(STUBS);
   await db.exec(await (await fetch("../supabase/schema.sql")).text());
   await db.exec(`grant usage on schema public, storage to anon, authenticated;
-    grant all on all tables in schema public to anon, authenticated;
+
     grant all on storage.objects to authenticated; alter table storage.objects enable row level security;`);
   if (window.SEED) await window.SEED(db);
   return db;

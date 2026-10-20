@@ -405,6 +405,21 @@ end $$;
 -- Used by the weekly keep-awake GitHub Action.
 create or replace function public.ping() returns int language sql stable as $$ select 1 $$;
 
+-- ---------- Explicit access grants ----------------------------------
+-- Works whether or not "Automatically expose new tables" is on. RLS above
+-- still decides which rows anyone can see.
+grant usage on schema public to anon, authenticated;
+revoke all on public.profiles, public.clients, public.jobs, public.job_signups from anon;
+grant select, update on public.profiles to authenticated;
+grant select, insert, update, delete on public.clients, public.jobs, public.job_signups to authenticated;
+
+-- Functions the website calls. Clients (not logged in) only get these four.
+grant execute on function public.submit_request(jsonb), public.get_request(uuid),
+  public.cancel_request(uuid), public.ping() to anon, authenticated;
+grant execute on function public.volunteer_board(), public.join_job(uuid, date, text),
+  public.change_my_time(uuid, date, text), public.leave_job(uuid), public.finish_job(uuid),
+  public.complete_training(text) to authenticated;
+
 -- Internal helpers shouldn't be callable from the website.
 revoke execute on function public.handle_new_user() from public, anon, authenticated;
 
