@@ -18,9 +18,13 @@ const FLAGS = { pet: { name: "A pet may be in the yard", em: "🐕" }, gate: { n
 const PARTS = { am: { name: "Morning", range: "9am–12pm", from: 9, to: 12 }, pm: { name: "Afternoon", range: "1pm–6pm", from: 13, to: 18 }, any: { name: "Either", range: "9am–6pm", from: 9, to: 18 } };
 const MIN_DAYS = 2, MAX_DAYS = 4;
 const CONTACT = { phone: "Phone call", email: "Email", either: "Either is fine" };
-const UNIS = ["Queen's University", "Royal Military College", "Other university"];
-const YEARS = ["1st year", "2nd year", "3rd year", "4th year+", "Grad student"];
-const AVAIL = ["Weekday afternoons", "Weekday evenings", "Weekends"];
+// Ontario universities (Queen's first since that's where 1Yard is based). "Other" lets people type their own.
+const UNIS = ["Queen's University", "Royal Military College of Canada", "Algoma University", "Brock University", "Carleton University",
+  "Lakehead University", "Laurentian University", "McMaster University", "Nipissing University", "OCAD University", "Ontario Tech University",
+  "Toronto Metropolitan University", "Trent University", "Université de Hearst", "Université de l'Ontario français", "University of Guelph",
+  "University of Ottawa", "University of Toronto", "University of Waterloo", "University of Windsor", "Western University",
+  "Wilfrid Laurier University", "York University"];
+const YEARS = ["1st year", "2nd year", "3rd year", "4th year", "5th year or more", "Grad student"];
 const TRAINING = CFG.training || [];
 const SHADOW_SHIFTS_NEEDED = 2;
 const OFFICE_PHONE = CFG.officePhone || "";
@@ -378,33 +382,40 @@ function wizError() {
 }
 
 /* ---------------- LOGIN / VOLUNTEER SIGN-UP ---------------- */
+// Password box with a Show/Hide button so people can check what they typed.
+const pwField = (id, label, auto, extra = "") => `<div class="field"><label class="lbl" for="${id}">${label}</label>
+  <div class="row" style="flex-wrap:nowrap"><input type="password" id="${id}" required autocomplete="${auto}" ${extra}>
+  <button type="button" class="btn ghost" data-act="togglePw" data-id="${id}" aria-controls="${id}" aria-pressed="false" style="min-width:76px">Show</button></div></div>`;
 const loginView = () => `<form class="card stack authcard" id="login-form">
     <h1>Volunteer log in</h1>
     <div class="field"><label class="lbl" for="l-email">Email</label><input type="email" id="l-email" required autocomplete="email"></div>
-    <div class="field"><label class="lbl" for="l-pass">Password</label><input type="password" id="l-pass" required autocomplete="current-password" style="width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;background:var(--surface)"></div>
+    ${pwField("l-pass", "Password", "current-password")}
     <button class="btn" type="submit">Log in</button>
     <p class="small muted">Forgot your password? Contact the 1Yard team.</p>
     <p class="small">New volunteer? <button type="button" class="linkbtn" data-act="go" data-id="signup">Apply here</button></p>
   </form>`;
 function signupView() {
-  const pw = `style="width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;background:var(--surface)"`;
-  return `<div class="head"><div><h1>Volunteer with 1Yard</h1><p>Open to university students in Kingston. Help seniors and people with physical limitations with outdoor yard work. Apply below and an admin will review it.</p></div></div>
+  const other = (id, ph) => `<input type="text" id="${id}" placeholder="${ph}" hidden style="margin-top:8px">`;
+  return `<div class="head"><div><h1>Volunteer with 1Yard</h1><p>Open to university students. Help seniors and people with physical limitations in Kingston with outdoor yard work. Apply below and an admin will review it.</p></div></div>
   <form class="card stack" id="signup">
     <div class="grid2">
-      <div class="field"><label class="lbl" for="f-name">Full name</label><input type="text" id="f-name" required autocomplete="name"></div>
+      <div class="field"><label class="lbl" for="f-first">First name</label><input type="text" id="f-first" required autocomplete="given-name"></div>
+      <div class="field"><label class="lbl" for="f-last">Last name</label><input type="text" id="f-last" required autocomplete="family-name"></div>
+      <div class="field"><label class="lbl" for="f-email">Email</label><input type="email" id="f-email" required autocomplete="email" placeholder="you@example.com"></div>
       <div class="field"><label class="lbl" for="f-phone">Phone</label><input type="tel" id="f-phone" required autocomplete="tel"></div>
-      <div class="field"><label class="lbl" for="f-email">School email</label><input type="email" id="f-email" required autocomplete="email" placeholder="you@queensu.ca"></div>
-      <div class="field"><label class="lbl" for="f-pass">Create a password</label><input type="password" id="f-pass" required minlength="8" autocomplete="new-password" placeholder="At least 8 characters" ${pw}></div>
-      <div class="field"><label class="lbl" for="f-uni">University</label><select class="in" id="f-uni" required>${UNIS.map((u) => `<option>${u}</option>`).join("")}</select></div>
+      ${pwField("f-pass", "Create a password", "new-password", 'minlength="8" placeholder="At least 8 characters"')}
+      <div class="field"><label class="lbl" for="f-uni">University</label>
+        <select class="in" id="f-uni" required><option value="" disabled selected>Choose your university</option>${UNIS.map((u) => `<option>${esc(u)}</option>`).join("")}<option value="__other">Other</option></select>
+        ${other("f-uni-other", "Type your university")}</div>
     </div>
     <div class="field"><span class="lbl">Year of study</span>
-      <div class="checks">${YEARS.map((a, i) => `<label class="check"><input type="radio" name="year" id="yr-${i}" value="${a}" ${i === 0 ? "checked" : ""}>${a}</label>`).join("")}</div></div>
-    <label class="check" style="max-width:520px"><input type="checkbox" id="f-student" required> I'm currently enrolled as a university student</label>
+      <div class="checks">${YEARS.map((a, i) => `<label class="check"><input type="radio" name="year" id="yr-${i}" value="${a}" required>${a}</label>`).join("")}<label class="check"><input type="radio" name="year" id="yr-other" value="__other">Other</label></div>
+      ${other("f-year-other", "Type your year or program")}</div>
     <div class="field"><span class="lbl">What can you do?</span>
-      <div class="checks">${Object.entries(SKILLS).map(([k, n]) => `<label class="check"><input type="checkbox" id="sk-${k}" name="skill" value="${k}">${n}</label>`).join("")}</div></div>
-    <div class="field"><span class="lbl">When are you usually free?</span>
-      <div class="checks">${AVAIL.map((s, i) => `<label class="check"><input type="checkbox" id="av-${i}" name="avail" value="${s}">${s}</label>`).join("")}</div></div>
+      <div class="checks">${Object.entries(SKILLS).map(([k, n]) => `<label class="check"><input type="checkbox" id="sk-${k}" name="skill" value="${k}">${n}</label>`).join("")}<label class="check"><input type="checkbox" id="sk-other" name="skill" value="__other">Other</label></div>
+      ${other("f-skill-other", "What else can you do?")}</div>
     <div class="field"><label class="lbl" for="f-why">Why do you want to volunteer?</label><textarea id="f-why" required></textarea></div>
+    <label class="check" style="max-width:560px"><input type="checkbox" id="f-verify" required> I confirm the information above is correct.</label>
     <div class="row"><button class="btn" type="submit">Submit application</button><span class="small muted">Already applied? <button type="button" class="linkbtn" data-act="go" data-id="login">Log in</button></span></div>
   </form>`;
 }
@@ -425,7 +436,7 @@ function volunteerView() {
   else if (S.volPage === "vboard") return `<div class="head"><div><h1>Open jobs</h1><p>Every job needs 2 volunteers. If a job has no one yet, you pick the exact time from the days the client is free. Bring your own gloves; the client provides the tools.</p></div><button class="btn" data-act="reload">${ic("refresh")} Refresh</button></div>` + openBoard(v);
   else if (S.volPage === "vhours") return hoursView(v);
   else body = myJobsView(v, sc);
-  return `<div class="head"><div><h1>Hi, ${esc(first(v.name))}</h1><p>${esc(v.uni)} · ${v.skills.map((s) => SKILLS[s]).join(", ")}</p></div>${vChip(v.status)}</div>` + stepper + body;
+  return `<div class="head"><div><h1>Hi, ${esc(first(v.name))}</h1><p>${esc(v.uni)} · ${esc(v.skills.map((s) => SKILLS[s] || s).join(", "))}</p></div>${vChip(v.status)}</div>` + stepper + body;
 }
 function trainingView() {
   return `<section class="card stack">
@@ -581,7 +592,6 @@ function appCard(v) {
       <div class="kv">
         <div><span>Email</span>${esc(v.email)}</div><div><span>Phone</span>${esc(v.phone)}</div>
         <div><span>School</span>${esc(v.uni)}</div><div><span>Year</span>${esc(v.year)}</div>
-        <div><span>Availability</span>${esc(v.avail.join(", ") || "—")}</div>
       </div>
       <div class="row">${v.skills.map((s) => `<span class="tag">${esc(SKILLS[s] || s)}</span>`).join("")}</div>
       <div class="quote"><div class="label">Why they want to volunteer</div>${esc(v.why)}</div>
@@ -764,6 +774,11 @@ const A = {
     if (id !== "dash") { S.adminTab = id; setTimeout(() => $("#admin-tabs")?.scrollIntoView({ block: "start", behavior: "smooth" })); } else scrollTo(0, 0);
   },
   volNav: (id) => { S.volPage = id; S.picking = null; S.confirm = null; scrollTo(0, 0); },
+  togglePw: (id, b) => {
+    const el = $("#" + id), show = el.type === "password";
+    el.type = show ? "text" : "password"; b.textContent = show ? "Hide" : "Show"; b.setAttribute("aria-pressed", show);
+    return SKIP; // don't redraw: it would clear the form
+  },
   hideBanner: () => { S.bannerHidden = true; try { localStorage.setItem("1yard-banner", SEASON.label); } catch {} },
   makeAdmin: async () => { const id = $("#new-admin").value; await upd("profiles", id, { role: "admin", status: "experienced" }); await loadAdmin(); return `${vol(id).name} is now an admin.`; },
   unadmin: async (id) => { await upd("profiles", id, { role: "volunteer" }); await loadAdmin(); return `${vol(id).name} is no longer an admin.`; },
@@ -933,6 +948,10 @@ document.addEventListener("input", (e) => {
 });
 document.addEventListener("change", async (e) => {
   const id = e.target.id;
+  // Volunteer form: show a text box when "Other" is picked.
+  if (id === "f-uni") { $("#f-uni-other").hidden = e.target.value !== "__other"; if (!$("#f-uni-other").hidden) $("#f-uni-other").focus(); return; }
+  if (e.target.name === "year") { $("#f-year-other").hidden = !$("#yr-other").checked; return; }
+  if (id === "sk-other") { $("#f-skill-other").hidden = !e.target.checked; return; }
   if (e.target.dataset.hours) {
     const sel = e.target; sel.disabled = true;
     try { await upd("jobs", sel.dataset.hours, { actual_hours: +sel.value }); await loadAdmin(); render(); toast("Hours updated."); }
@@ -979,12 +998,16 @@ document.addEventListener("submit", async (e) => {
       if (!S.me) throw new Error("This account has no volunteer profile. Contact the 1Yard team.");
       await goHome();
     } else if (form.id === "signup") {
-      const skills = [...document.querySelectorAll('input[name="skill"]:checked')].map((i) => i.value);
+      const typed = (id, what) => { const t = $("#" + id).value.trim(); if (!t) throw new Error(`Please type your ${what}.`); return t; };
+      const uni = $("#f-uni").value === "__other" ? typed("f-uni-other", "university") : $("#f-uni").value;
+      const yearPick = $('input[name="year"]:checked')?.value;
+      const year = yearPick === "__other" ? typed("f-year-other", "year of study") : yearPick;
+      let skills = [...document.querySelectorAll('input[name="skill"]:checked')].map((i) => i.value);
+      if (skills.includes("__other")) skills = [...skills.filter((x) => x !== "__other"), "Other: " + typed("f-skill-other", "other skills")];
       if (!skills.length) throw new Error("Pick at least one thing you can do.");
       const res = must(await sb.auth.signUp({ email: $("#f-email").value.trim(), password: $("#f-pass").value, options: { data: {
-        name: $("#f-name").value.trim(), phone: $("#f-phone").value.trim(), university: $("#f-uni").value,
-        year: $('input[name="year"]:checked')?.value || "", skills,
-        availability: [...document.querySelectorAll('input[name="avail"]:checked')].map((i) => i.value), why: $("#f-why").value.trim() } } }));
+        name: `${$("#f-first").value.trim()} ${$("#f-last").value.trim()}`, phone: $("#f-phone").value.trim(), university: uni,
+        year, skills, why: $("#f-why").value.trim() } } }));
       if (!res.session) { S.view = "login"; S.notice = "Application sent. Check your email to confirm your address, then log in."; }
       else { await loadMe(); await goHome(); toast("Application sent. An admin will review it soon."); }
     }
