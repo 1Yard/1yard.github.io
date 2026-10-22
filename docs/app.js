@@ -240,6 +240,15 @@ function sideNav() {
 }
 const endTime = (start, hours) => { const m = to_min(start) + Math.round(hours * 60); return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`; };
 const to_min = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+// How long a client has been waiting since they asked for help.
+const daysSince = (iso) => Math.max(0, Math.floor((Date.now() - new Date(iso)) / 864e5));
+const waitText = (j) => { const d = daysSince(j.createdAt); return d === 0 ? "Asked today" : `Waiting ${d} day${d === 1 ? "" : "s"}`; };
+const waitChip = (j) => j.createdAt && (j.status === "review" || j.status === "scheduled") ? `<span class="chip ${daysSince(j.createdAt) >= 7 ? "c-amber" : "c-grey"}" title="Asked for help on ${fmtDate(j.createdAt.slice(0, 10))}">${waitText(j)}</span>` : "";
+// The client's most recent finished job before this one (admin only; volunteers don't load other jobs).
+function lastHelped(j) {
+  const prev = S.jobs.filter((x) => x.clientId === j.clientId && x.id !== j.id && x.status === "done" && x.date).sort((a, b) => b.date.localeCompare(a.date))[0];
+  return prev ? `Last helped ${fmtDate(prev.date)} (${daysSince(prev.date + "T12:00")} days ago)` : "First time asking for help";
+}
 const jobHours = (j) => +(j.actualHours ?? j.hours);
 const hoursFor = (vid) => S.signups.filter((s) => s.vid === vid && job(s.jobId)?.status === "done").reduce((t, s) => t + jobHours(job(s.jobId)), 0);
 const fmtHours = (h) => (Math.round(h * 10) / 10).toString().replace(/\.0$/, "");
@@ -473,7 +482,7 @@ function myJobsView(v, sc) {
     <div class="stat s-peach"><span class="sico">${ic("leaf")}</span><div><b>${S.history.length}</b><span>Jobs completed</span></div></div>
   </div>
   <section class="stack">
-    <div class="head"><div><h2>My upcoming jobs</h2><p>Full address and client contact show here once you've signed up.</p></div><button class="btn ghost" data-act="volNav" data-id="vboard">${ic("search")} Find a job</button></div>
+    <div class="head"><div><h2>My upcoming jobs</h2><p>Client name, phone and notes appear on jobs you've signed up for.</p></div><button class="btn ghost" data-act="volNav" data-id="vboard">${ic("search")} Find a job</button></div>
     ${mine.length ? `<div class="jobs">${mine.map((j) => myJobCard(j, v)).join("")}</div>` : `<div class="empty">You haven't signed up for anything yet. <button class="linkbtn" data-act="volNav" data-id="vboard">See open jobs</button></div>`}
   </section>`;
 }
@@ -500,10 +509,15 @@ function hoursView(v) {
   </table></div>` : `<div class="empty">No finished jobs yet. When you and your partner mark a job done, the hours show up here.</div>`}
   <p class="small muted">Need an official record of your hours? Ask a 1Yard admin; they can see every volunteer's total.</p>`;
 }
+// Same layout for every job card: title, then When / Where / Skills / Tools / Heads up.
 function jobFacts(j, v, full) {
   const c = client(j.clientId), skills = neededSkills(j.services), have = neededTools(j.services).filter((t) => j.tools[t]), miss = missingTools(j);
+  const when = isLocked(j)
+    ? `<div><b>${fmtDate(j.date)} · ${fmtTime(j.start)}–${fmtTime(endTime(j.start, j.hours))}</b> <span class="muted">(about ${j.hours}h)</span></div>`
+    : `<div><b>You pick the start time</b> <span class="muted">(about ${j.hours}h)</span>, on one of the client's free days:<ul class="wins" style="margin-top:4px">${liveWindows(j).map((x) => `<li>${windowText(x)}</li>`).join("")}</ul></div>`;
   return `<dl>
-    <dt>Where</dt><dd>${full ? `<b>${esc(c.address)}, ${esc(c.postal)}</b>` : `${esc(c.area)} <span class="muted">(full address after you sign up)</span>`}</dd>
+    <dt>When</dt><dd>${when}</dd>
+    <dt>Where</dt><dd><div><b>${esc(c.address)}${c.postal ? `, ${esc(c.postal)}` : ""}</b> <span class="muted">${esc(c.area)}</span></div></dd>
     ${full ? `<dt>Client</dt><dd>${esc(c.name)} · ${esc(c.phone)}</dd>` : ""}
     <dt>Skills</dt><dd>${skills.length ? skills.map((k) => `<span class="tag ${v.skills.includes(k) ? "have" : ""}">${v.skills.includes(k) ? "✓ " : ""}${SKILLS[k]}</span>`).join("") : `<span class="muted">No special skills</span>`}</dd>
     <dt>Tools</dt><dd>${have.map((t) => `<span class="tag">${TOOLS[t].name}</span>`).join("")}${miss.map((t) => `<span class="tag warn">No ${TOOLS[t].name.toLowerCase()}</span>`).join("")}<span class="tag">Bring: gloves</span></dd>
@@ -511,6 +525,7 @@ function jobFacts(j, v, full) {
     ${j.notes && full ? `<dt>Note</dt><dd>${esc(j.notes)}</dd>` : ""}
   </dl>`;
 }
+const jobTop = (j) => `<div class="stack" style="gap:6px;justify-items:start"><h3>${esc(jobTitle(j))}</h3>${waitChip(j)}</div>`;
 function picker(j, cur, verb) {
   return `<div class="picker">
     <label class="lbl" for="pk-${j.id}">Pick a start time (job takes about ${j.hours}h)</label>
@@ -525,9 +540,7 @@ function openJobCard(j, v) {
     : locked ? `<button class="btn" data-act="join" data-id="${j.id}">Sign up for ${fmtTime(j.start)}</button>`
     : `<button class="btn" data-act="pickOpen" data-id="${j.id}">Sign up and pick a time</button>`;
   return `<article class="card job ${pri ? "priority" : ""}">
-    <div class="row" style="justify-content:space-between"><span class="when">${locked ? whenText(j) : "You pick the time"}</span><span class="small muted">~${j.hours}h</span></div>
-    <h3>${esc(jobTitle(j))}</h3>
-    ${locked ? "" : `<div><div class="label">Client is free</div><ul class="wins">${liveWindows(j).map((x) => `<li>${windowText(x)}</li>`).join("")}</ul></div>`}
+    ${jobTop(j)}
     ${jobFacts(j, v, false)}
     ${slots(j)}
     ${S.picking === j.id ? picker(j, "", "Confirm sign-up") : `<div class="foot">${jChip(j)}${action}</div>`}
@@ -542,9 +555,8 @@ function myJobCard(j, v) {
   else if (S.confirm === "done:" + j.id) foot = doneForm(j, "Mark as done");
   else foot = `<div class="foot">${full ? `<button class="btn" data-act="done" data-id="${j.id}">We finished this job</button>` : `<button class="btn ghost" data-act="pickOpen" data-id="${j.id}">Change time</button>`}<button class="btn danger" data-act="leave" data-id="${j.id}">Leave job</button></div>`;
   return `<article class="card job">
-    <div class="row" style="justify-content:space-between"><span class="when">${whenText(j)}</span><span class="small muted">~${j.hours}h</span></div>
+    ${jobTop(j)}
     ${j.timeChangedAt ? `<div class="alertline">⚠ An admin changed the time ${ago(j.timeChangedAt)}. It's now ${whenText(j)}.</div>` : ""}
-    <h3>${esc(jobTitle(j))}</h3>
     ${jobFacts(j, v, true)}
     ${slots(j)}
     ${pv ? `<div class="picker" style="gap:2px"><span class="label">Your partner</span><b>${esc(pv.name)}</b><span class="small">📞 ${esc(pv.phone)} · ✉️ ${esc(pv.email)}</span><span class="small muted">Running late or can't make it? Text your partner and let the 1Yard admin know.</span></div>`
@@ -608,11 +620,12 @@ function reviewCard(j) {
   const c = client(j.clientId), miss = missingTools(j), have = neededTools(j.services).filter((t) => j.tools[t]);
   return `<article class="card split">
     <div class="stack">
-      <div class="row"><h3>${esc(jobTitle(j))}</h3>${jChip(j)}<span class="muted small">sent ${ago(j.createdAt)}${j.editedAt ? ` · edited by admin ${ago(j.editedAt)}` : ""}</span><button class="btn ghost" style="margin-left:auto" data-act="edit" data-id="${j.id}">Edit details</button></div>
+      <div class="row"><h3>${esc(jobTitle(j))}</h3>${jChip(j)}${waitChip(j)}<span class="muted small">sent ${ago(j.createdAt)}${j.editedAt ? ` · edited by admin ${ago(j.editedAt)}` : ""}</span><button class="btn ghost" style="margin-left:auto" data-act="edit" data-id="${j.id}">Edit details</button></div>
       <div class="kv">
         <div><span>Client</span>${esc(c.name)}</div>
         <div><span>Contact</span>${esc(c.phone)}${c.email ? `<br>${esc(c.email)}` : ""}<br><span style="display:inline">Prefers: ${CONTACT[c.contact]}</span></div>
         <div><span>Address</span>${esc(c.address)}, ${esc(c.postal)}<br>${esc(c.area)}</div>
+        <div><span>History</span>${lastHelped(j)}</div>
       </div>
       <div><div class="label">Client is free</div><ul class="wins">${j.windows.map((x) => `<li>${windowText(x)}${x.date <= today() ? ` <span class="tag warn">already passed</span>` : ""}</li>`).join("")}</ul></div>
       <div class="row"><span class="label">Tools on site</span>${have.map((t) => `<span class="tag have">✓ ${TOOLS[t].name}</span>`).join("")}${miss.map((t) => `<span class="tag warn">Missing: ${TOOLS[t].name}</span>`).join("")}</div>
@@ -661,7 +674,7 @@ function callsView(items) {
     if (S.resched === j.id) return reschedPanel(j);
     return `<article class="card call">
       <div class="stack" style="gap:8px">
-        <div class="row">${kind === "tell" ? `<span class="chip c-green">Crew confirmed</span>` : `<span class="chip c-rose">Needs new dates</span>`}<span class="small muted">${esc(jobTitle(j))} · ${esc(c.area)}</span></div>
+        <div class="row">${kind === "tell" ? `<span class="chip c-green">Crew confirmed</span>` : `<span class="chip c-rose">Needs new dates</span>`}<span class="small muted">${esc(jobTitle(j))} · ${esc(c.area)}</span>${waitChip(j)}</div>
         <h3>${kind === "tell" ? `Tell ${esc(c.name)} when volunteers are coming` : `Ask ${esc(c.name)} for new days`}</h3>
         <div class="phone">📞 ${esc(c.phone || c.email)}</div>
         ${kind === "tell" ? `<p><b>${names.map(esc).join(" and ")}</b> will come <b>${whenText(j, true)}</b> (about ${j.hours}h).</p>`
@@ -706,9 +719,9 @@ function jobsTable() {
       <td style="white-space:nowrap">${j.status === "done" && j.date ? `<b>${fmtDate(j.date)}</b><div class="muted">${fmtTime(j.start)}</div>`
         : isLocked(j) ? `<b>${fmtDate(j.date)}</b><div class="muted">${fmtTime(j.start)} – ${fmtTime(endTime(j.start, j.hours))}</div><div class="muted">(~${j.hours}h)</div>`
         : lw.length ? `<b>${fmtDate(lw[0].date)}${lw.length > 1 ? ` –<br>${fmtDate(lw[lw.length - 1].date)}` : ""}</b><div class="muted">${lw.length} day option${lw.length === 1 ? "" : "s"}</div>` : `<b>No days left</b><div class="muted">Needs new dates</div>`}</td>
-      <td><b>${esc(jobTitle(j))}</b><div class="muted">${esc(c.name)} · ${esc(c.address)}, ${esc(c.area)}</div></td>
+      <td><b>${esc(jobTitle(j))}</b><div class="muted">${esc(c.name)} · ${esc(c.address)}, ${esc(c.area)}</div><div class="small muted">${lastHelped(j)}</div></td>
       <td style="min-width:250px">${slots(j)}</td>
-      <td>${jChip(j)}${j.status === "done" ? `<div style="margin-top:10px"><select class="in" data-hours="${j.id}" aria-label="Hours worked" style="width:auto">${hourOptions(jobHours(j))}</select><div class="small muted">logged per volunteer</div></div>` : ""}</td>
+      <td><div class="stack" style="gap:6px;justify-items:start">${jChip(j)}${waitChip(j)}</div>${j.status === "done" ? `<div style="margin-top:10px"><select class="in" data-hours="${j.id}" aria-label="Hours worked" style="width:auto">${hourOptions(jobHours(j))}</select><div class="small muted">logged per volunteer</div></div>` : ""}</td>
       <td>${S.confirm === "done:" + j.id ? doneForm(j, "Save as done") : j.status === "scheduled" ? `<div class="acts">${isFull(j) ? `<button class="btn" data-act="done" data-id="${j.id}">Mark done</button>` : ""}<button class="btn ghost" data-act="resched" data-id="${j.id}">Change time</button><button class="btn ghost" data-act="edit" data-id="${j.id}">Edit</button><button class="btn danger" data-act="acancel" data-id="${j.id}">Cancel</button></div>` : ""}</td>
     </tr>`; }).join("")}</tbody></table></div>` : `<div class="empty">No jobs here.</div>`}`;
 }

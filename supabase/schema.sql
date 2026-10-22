@@ -212,8 +212,8 @@ begin
   return me;
 end $$;
 
--- Everything a trained volunteer's job board needs. Full address, client
--- contact, notes and partner contact only appear on jobs they're crew on.
+-- Everything a trained volunteer's job board needs. The address is shown on
+-- every job; client name/phone, notes and partner contact only to the crew.
 create or replace function public.volunteer_board() returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare me profiles;
@@ -237,8 +237,8 @@ begin
         'area', c.area,
         'client_name',  case when m.mine then c.name end,
         'client_phone', case when m.mine then c.phone end,
-        'address',      case when m.mine then c.address end,
-        'postal',       case when m.mine then c.postal end,
+        'address', c.address,          -- every trained volunteer sees where the job is
+        'postal',  c.postal,
         'notes',        case when m.mine then j.notes end,
         'crew', coalesce((
           select jsonb_agg(jsonb_build_object(

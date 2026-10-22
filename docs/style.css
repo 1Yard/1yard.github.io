@@ -293,3 +293,5 @@ textarea { min-height: 96px; resize: vertical; }
 }
 @media (max-width: 440px) { .stats { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+.job h3 { font-family: var(--display); font-weight: 400; font-size: 1.4rem; line-height: 1.2; }
+.job .chip { flex: none; }
