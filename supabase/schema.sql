@@ -68,6 +68,9 @@ create table if not exists public.jobs (
   edited_at        timestamptz
 );
 -- One open request per client.
+-- Hours the crew actually worked, logged when the job is marked done.
+alter table public.jobs add column if not exists actual_hours numeric(4,1);
+
 create unique index if not exists one_open_request_per_client
   on public.jobs (client_id) where status in ('review', 'scheduled');
 
@@ -219,6 +222,12 @@ begin
   return jsonb_build_object(
     'shadow_count', shadow_count(me.id),
     'jobs_done', jobs_done(me.id),
+    -- Completed jobs and hours, for the volunteer's own record (e.g. school service hours).
+    'history', coalesce((
+      select jsonb_agg(jsonb_build_object('id', j.id, 'date', j.date, 'services', j.services,
+               'area', c.area, 'hours', coalesce(j.actual_hours, j.hours)) order by j.date desc)
+      from job_signups s join jobs j on j.id = s.job_id join clients c on c.id = j.client_id
+      where s.volunteer_id = me.id and j.status = 'done'), '[]'),
     'jobs', coalesce((
       select jsonb_agg(jsonb_build_object(
         'id', j.id, 'services', j.services, 'tools', j.tools, 'flags', j.flags,
@@ -300,17 +309,20 @@ begin
   end if;
 end $$;
 
--- Crew member or admin marks a full job done. Trainees who now have enough
--- shadow shifts are promoted. Returns the names of anyone promoted.
-create or replace function public.finish_job(p_job uuid) returns text[]
+-- Crew member or admin marks a full job done and logs how long it took
+-- (counts as volunteer hours for both crew members). Trainees who now have
+-- enough shadow shifts are promoted. Returns the names of anyone promoted.
+drop function if exists public.finish_job(uuid);
+create or replace function public.finish_job(p_job uuid, p_hours numeric default null) returns text[]
 language plpgsql security definer set search_path = public as $$
 declare promoted text[];
 begin
+  if p_hours is not null and (p_hours < 0.5 or p_hours > 12) then raise exception 'Hours should be between 0.5 and 12'; end if;
   if not (is_admin() or exists (select 1 from job_signups where job_id = p_job and volunteer_id = auth.uid())) then
     raise exception 'Only the crew or an admin can finish this job';
   end if;
   if (select count(*) from job_signups where job_id = p_job) < 2 then raise exception 'The job needs a full crew first'; end if;
-  update jobs set status = 'done', done_at = now() where id = p_job and status = 'scheduled';
+  update jobs set status = 'done', done_at = now(), actual_hours = coalesce(p_hours, hours) where id = p_job and status = 'scheduled';
   if not found then raise exception 'This job is not open'; end if;
   with up as (
     update profiles set status = 'experienced', promoted_at = now()
@@ -448,7 +460,7 @@ grant select, insert, update, delete on public.clients, public.jobs, public.job_
 grant execute on function public.submit_request(jsonb), public.get_request(uuid),
   public.cancel_request(uuid), public.ping() to anon, authenticated;
 grant execute on function public.volunteer_board(), public.join_job(uuid, date, text),
-  public.change_my_time(uuid, date, text), public.leave_job(uuid), public.finish_job(uuid),
+  public.change_my_time(uuid, date, text), public.leave_job(uuid), public.finish_job(uuid, numeric),
   public.complete_training(text), public.admin_remove_volunteer(uuid) to authenticated;
 
 -- Internal helpers shouldn't be callable from the website.

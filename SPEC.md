@@ -88,3 +88,15 @@ job_signups   id, job_id, volunteer_id, as_trainee bool, created_at   -- unique(
 - Who can mark a job done: crew, admin, or both? (prototype: both)
 - Should clients log in with a password, or a one-time code by text/email? (recommended: one-time code; lower digital literacy)
 - Do volunteers get reminders (email/SMS) before a job? Not in MVP.
+
+## After a match (job lifecycle end to end)
+
+1. Crew full → client's page shows names + exact time; job appears on the admin's **Calls to make** list.
+2. Admin calls the client and clicks **Called ✓**.
+3. Job day: the two volunteers meet at the address (they have each other's phone/email).
+4. Afterwards **either volunteer** clicks **We finished this job** (or an admin clicks **Mark done**) and picks how many hours it took.
+5. Job becomes **done**: client's page says "All done", the hours count for **both** volunteers, trainees get a shadow shift (auto-promoted at 2).
+6. Volunteers see their total + per-job log under **My hours** (useful for school service hours). Admins see each volunteer's total in **Volunteers** and can correct a job's hours under **Jobs → Done & cancelled**.
+
+## Admin settings
+**Settings** page: make any signed-up person an admin, or remove admin rights (not your own).

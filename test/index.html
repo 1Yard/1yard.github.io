@@ -4,17 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>1Yard · LOCAL TEST</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Serif+Display&display=swap">
 <link rel="stylesheet" href="../docs/style.css">
 </head>
 <body>
 <!-- Local test harness: the real site (docs/app.js) running against an in-browser copy of the database. -->
-<header class="topbar"><div class="topbar-inner">
-  <button class="brand" data-act="go" data-id="home">1Yard <small>local test</small></button>
-  <nav class="nav" id="nav"></nav>
-</div></header>
-<div class="season" id="season"></div>
-<main><div class="wrap" id="app"><div class="loading">Starting test database…</div></div></main>
+<div id="root"><div class="loading">Starting test database…</div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script>
 // Test accounts (local only): admin@test.ca / testpass1, sam@test.ca / testpass1 (experienced)

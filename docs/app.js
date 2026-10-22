@@ -29,7 +29,8 @@ const TOKENS_KEY = "1yard-my-requests";
 /* ============ STATE ============ */
 let S = {
   view: "loading", me: null, volunteers: [], clients: [], jobs: [], signups: [], myShadow: 0,
-  adminTab: "calls", jobFilter: "upcoming", boardFilter: "all",
+  adminTab: "calls", adminPage: "dash", volPage: "vhome", history: [], jobFilter: "upcoming", boardFilter: "all",
+  bannerHidden: (() => { try { return localStorage.getItem("1yard-banner") === SEASON.label; } catch { return false; } })(),
   wiz: null, confirm: null, editing: null, resched: null, picking: null,
   token: null, request: null, justSent: false, notice: "", busy: false,
 };
@@ -113,8 +114,8 @@ function slots(j) {
   return `<div class="slots">${[0, 1].map((i) => {
     const s = c[i];
     if (s) return `<div class="slot ${s.asTrainee ? "trainee" : "exp"}"><b>${esc(vol(s.vid)?.name || "Former volunteer")}</b>${s.asTrainee ? "Trainee" : "Experienced"}</div>`;
-    if (needsExperienced(j)) return `<div class="slot empty exp-only"><b>Open spot</b>Experienced only</div>`;
-    return `<div class="slot empty"><b>Open spot</b>Anyone trained</div>`;
+    if (needsExperienced(j)) return `<div class="slot empty exp-only"><span class="plus">+</span><b>Open spot</b>Experienced only</div>`;
+    return `<div class="slot empty"><span class="plus">+</span><b>Open spot</b>Anyone trained</div>`;
   }).join("")}</div>`;
 }
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 3500); }
@@ -124,7 +125,7 @@ const rememberToken = (t) => { try { localStorage.setItem(TOKENS_KEY, JSON.strin
 /* ============ DATA (Supabase) ============ */
 const mapProfile = (p) => ({ id: p.id, role: p.role, name: p.name, email: p.email, phone: p.phone, uni: p.university, year: p.year, skills: p.skills || [], avail: p.availability || [], why: p.why, status: p.status, appliedAt: p.applied_at, reviewedAt: p.reviewed_at, trainedAt: p.trained_at, promotedAt: p.promoted_at, waiverPath: p.waiver_path });
 const mapClient = (c) => ({ id: c.id, name: c.name, phone: c.phone, email: c.email, contact: c.contact, address: c.address, postal: c.postal, area: c.area });
-const mapJob = (j) => ({ id: j.id, clientId: j.client_id, services: j.services, tools: j.tools || {}, flags: j.flags || [], notes: j.notes || "", windows: j.windows || [], status: j.status, date: j.date, start: j.start_time, hours: j.hours, createdAt: j.created_at, toldAt: j.told_at, attempts: j.attempts, lastAttemptAt: j.last_attempt_at, timeChangedAt: j.time_changed_at, publishedAt: j.published_at, doneAt: j.done_at, editedAt: j.edited_at });
+const mapJob = (j) => ({ id: j.id, clientId: j.client_id, services: j.services, tools: j.tools || {}, flags: j.flags || [], notes: j.notes || "", windows: j.windows || [], status: j.status, date: j.date, start: j.start_time, hours: j.hours, createdAt: j.created_at, toldAt: j.told_at, attempts: j.attempts, lastAttemptAt: j.last_attempt_at, timeChangedAt: j.time_changed_at, publishedAt: j.published_at, doneAt: j.done_at, editedAt: j.edited_at, actualHours: j.actual_hours });
 const mapSignup = (s) => ({ id: s.id, jobId: s.job_id, vid: s.volunteer_id, asTrainee: s.as_trainee, at: s.created_at });
 const must = ({ data, error }) => { if (error) throw error; return data; };
 
@@ -143,7 +144,7 @@ async function loadBoard() {
   S.jobs = []; S.clients = []; S.signups = []; S.volunteers = [S.me];
   if (!canSeeBoard(S.me)) return;
   const data = must(await sb.rpc("volunteer_board"));
-  S.myShadow = data.shadow_count;
+  S.myShadow = data.shadow_count; S.history = data.history || [];
   for (const b of data.jobs) {
     const cid = "c-" + b.id;
     S.clients.push({ id: cid, name: b.client_name || "", phone: b.client_phone || "", address: b.address || "", postal: b.postal || "", area: b.area });
@@ -168,19 +169,79 @@ async function goHome() {
   else S.view = "home";
 }
 
+/* ============ ICONS & ART ============ */
+const ICON = {
+  home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
+  phone: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/>',
+  file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h6"/>',
+  users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
+  userplus: '<path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/>',
+  cal: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+  refresh: '<path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/>',
+  leaf: '<path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.5 19 2c1 2 2 4.2 2 8 0 5.5-4.8 10-10 10Z"/><path d="M2 21c0-3 1.9-5.4 5.1-6"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+};
+const ic = (n) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${ICON[n]}</svg>`;
+const LOGO = `<svg viewBox="0 0 46 36" aria-hidden="true"><rect x="8" y="17" width="2.4" height="18" rx="1" fill="#3A4E10"/><circle cx="9.2" cy="14" r="7.5" fill="#749C20"/><rect x="22" y="14" width="2.4" height="21" rx="1" fill="#3A4E10"/><ellipse cx="23.2" cy="11" rx="7.5" ry="11" fill="#4F7A2C"/><rect x="36" y="19" width="2.4" height="16" rx="1" fill="#3A4E10"/><circle cx="37.2" cy="16.5" r="6.8" fill="#8DB83A"/></svg>`;
+// Sidebar scene: hills, a house, trees and a fence.
+const ART = `<svg viewBox="0 0 260 300" aria-hidden="true">
+  <path d="M0 150 C60 120 120 140 170 118 C210 100 240 112 260 104 V300 H0Z" fill="#E4EDD6"/>
+  <g transform="translate(70 120)"><path d="M0 40 L38 8 L76 40 Z" fill="#B9C9A2"/><rect x="6" y="38" width="64" height="48" fill="#F3EFE4"/><rect x="16" y="50" width="12" height="12" fill="#C9D9B3"/><rect x="48" y="50" width="12" height="12" fill="#C9D9B3"/><rect x="31" y="60" width="13" height="26" fill="#A88F6A"/></g>
+  <g fill="#6B5B45"><rect x="27" y="150" width="5" height="60"/><rect x="200" y="140" width="5" height="70"/><rect x="232" y="168" width="4" height="40"/></g>
+  <circle cx="30" cy="140" r="30" fill="#7FA35A"/><circle cx="14" cy="158" r="18" fill="#9DBE7A"/><circle cx="46" cy="160" r="16" fill="#8DB06A"/>
+  <circle cx="203" cy="128" r="28" fill="#8DB06A"/><circle cx="222" cy="146" r="18" fill="#A9C784"/><circle cx="234" cy="160" r="14" fill="#7FA35A"/>
+  <path d="M0 200 C70 172 150 196 260 170 V300 H0Z" fill="#A9C784"/>
+  <g fill="#F4F1E6">${[...Array(13)].map((_, i) => `<rect x="${8 + i * 12}" y="${196 - i * 0.8}" width="5" height="22" rx="1.5"/>`).join("")}<rect x="6" y="203" width="156" height="3" transform="rotate(-4 6 203)"/></g>
+  <path d="M0 224 C80 206 170 222 260 204 V300 H0Z" fill="#F7F9F1"/>
+</svg>`;
+
 /* ============ RENDER ============ */
 function render() {
-  $("#season").textContent = `🍂 ${SEASON.label} · Kingston · Outdoor work only`;
-  $("#nav").innerHTML = S.me
-    ? `<span class="small muted">${esc(first(S.me.name))}${S.me.role === "admin" ? " · admin" : ""}</span><button class="btn ghost" data-act="logout">Log out</button>`
-    : S.view !== "login" && S.view !== "signup" ? `<button class="btn ghost" data-act="go" data-id="login">Volunteer log in</button>` : "";
-  const app = $("#app");
-  const clientish = ["home", "wizard", "request"].includes(S.view);
-  app.className = "wrap" + (clientish ? " narrow client" : S.view === "login" || S.view === "signup" ? " narrow" : "");
   const views = { loading: () => `<div class="loading">Loading…</div>`, setup: setupView, home: homeView, wizard: wizardView, request: requestView, login: loginView, signup: signupView, volunteer: volunteerView, admin: adminView };
-  app.innerHTML = (S.notice ? `<div class="note">${S.notice}</div>` : "") + (views[S.view] || homeView)() +
-    `<footer><p class="small muted">1Yard · volunteer yard help in Kingston, ON${OFFICE_PHONE ? ` · ${esc(OFFICE_PHONE)}` : ""}</p></footer>`;
+  const body = (S.notice ? `<div class="note">${S.notice}</div>` : "") + (views[S.view] || homeView)();
+  const banner = S.bannerHidden ? "" : `<div class="seasonbar">${ic("leaf")}<span>${SEASON.label} · <b>Kingston · Outdoor work only</b></span><button class="x" data-act="hideBanner" aria-label="Hide this message">${ic("x")}</button></div>`;
+  const foot = `<p class="foot-note">1Yard · volunteer yard help in Kingston, ON${OFFICE_PHONE ? ` · ${esc(OFFICE_PHONE)}` : ""}</p>`;
+  const logo = `<button class="logo" data-act="go" data-id="home" aria-label="1Yard home">${LOGO}1Yard</button>`;
+  if (S.me && (S.view === "admin" || S.view === "volunteer")) {
+    $("#root").innerHTML = `<div class="shell">
+      <aside class="side">${logo}<nav class="side-nav" aria-label="Main">${sideNav()}</nav>
+        ${S.view === "admin" ? `<hr><nav class="side-nav">${navItem("settings", "Settings", "gear", S.adminPage === "settings")}</nav>` : ""}
+        <div class="side-art">${ART}<div class="tag-line"><b>1Yard</b><span>Neighbour to neighbour.</span></div></div>
+      </aside>
+      <div class="main">
+        <div class="mtop"><span class="who">${esc(first(S.me.name))} · ${S.me.role === "admin" ? "admin" : "volunteer"}</span><span class="avatar">${esc((S.me.name || "?").trim().charAt(0).toUpperCase())}</span><button class="btn ghost" data-act="logout">Log out</button></div>
+        <div class="content">${banner}${body}${foot}</div>
+      </div></div>`;
+  } else {
+    const clientish = ["home", "wizard", "request"].includes(S.view);
+    const nav = S.view !== "login" && S.view !== "signup" ? `<button class="btn ghost" data-act="go" data-id="login">Volunteer log in</button>` : "";
+    $("#root").innerHTML = `<header class="ptop">${logo}<div class="row">${nav}</div></header>
+      <div class="pwrap"><div class="content ${clientish ? "client" : ""}">${banner}${body}${foot}</div></div>`;
+  }
 }
+const navItem = (id, label, icon, on, count) => `<button class="nav-item ${on ? "on" : ""}" data-act="${S.view === "admin" ? "adminNav" : "volNav"}" data-id="${id}">${ic(icon)}<span>${label}</span>${count ? `<span class="count">${count}</span>` : ""}</button>`;
+function sideNav() {
+  if (S.view === "admin") {
+    const dash = S.adminPage === "dash";
+    const n = { calls: callItems().length, reqs: S.jobs.filter((j) => j.status === "review").length, apps: S.volunteers.filter((v) => v.role !== "admin" && v.status === "pending").length };
+    return navItem("dash", "Dashboard", "home", dash) + navItem("calls", "Calls to make", "phone", false, n.calls) + navItem("reqs", "New requests", "file", false, n.reqs) +
+      navItem("apps", "Volunteer applications", "userplus", false, n.apps) + navItem("jobs", "Jobs", "cal") + navItem("vols", "Volunteers", "users");
+  }
+  const trained = canSeeBoard(S.me);
+  return navItem("vhome", trained ? "My jobs" : "My application", "home", S.volPage === "vhome" || !trained) +
+    (trained ? navItem("vboard", "Open jobs", "search", S.volPage === "vboard") + navItem("vhours", "My hours", "clock", S.volPage === "vhours") : "");
+}
+const endTime = (start, hours) => { const m = to_min(start) + Math.round(hours * 60); return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`; };
+const to_min = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+const jobHours = (j) => +(j.actualHours ?? j.hours);
+const hoursFor = (vid) => S.signups.filter((s) => s.vid === vid && job(s.jobId)?.status === "done").reduce((t, s) => t + jobHours(job(s.jobId)), 0);
+const fmtHours = (h) => (Math.round(h * 10) / 10).toString().replace(/\.0$/, "");
+const hourOptions = (cur) => [...Array(24)].map((_, i) => (i + 1) / 2).map((h) => `<option value="${h}" ${+cur === h ? "selected" : ""}>${fmtHours(h)} hour${h === 1 ? "" : "s"}</option>`).join("");
+const doneForm = (j, label) => `<div class="confirm ok"><b>How many hours did the job take?</b><span class="small">Counts toward both volunteers' hours.</span>
+  <div class="row"><select id="dh-${j.id}" aria-label="Hours worked">${hourOptions(j.hours)}</select><button class="btn" data-act="doneYes" data-id="${j.id}">${label}</button><button class="btn ghost" data-act="confirmNo">Cancel</button></div></div>`;
 const setupView = () => `<div class="card stack"><h2>Almost there</h2><p>Add your Supabase URL and key to <code>docs/config.js</code> to turn the site on. See README.md.</p></div>`;
 
 /* ---------------- PUBLIC HOME ---------------- */
@@ -361,7 +422,9 @@ function volunteerView() {
   else if (v.status === "declined") body = `<div class="card stack"><h2>Application not approved</h2>
     <p class="muted">Thanks for your interest in 1Yard. Your application wasn't approved this season. Contact the team if you have questions.</p></div>`;
   else if (v.status === "approved") body = trainingView() + lockedBoard();
-  else body = boardView(v, sc);
+  else if (S.volPage === "vboard") return `<div class="head"><div><h1>Open jobs</h1><p>Every job needs 2 volunteers. If a job has no one yet, you pick the exact time from the days the client is free. Bring your own gloves; the client provides the tools.</p></div><button class="btn" data-act="reload">${ic("refresh")} Refresh</button></div>` + openBoard(v);
+  else if (S.volPage === "vhours") return hoursView(v);
+  else body = myJobsView(v, sc);
   return `<div class="head"><div><h1>Hi, ${esc(first(v.name))}</h1><p>${esc(v.uni)} · ${v.skills.map((s) => SKILLS[s]).join(", ")}</p></div>${vChip(v.status)}</div>` + stepper + body;
 }
 function trainingView() {
@@ -386,27 +449,45 @@ function trainingView() {
   </section>`;
 }
 const lockedBoard = () => `<div class="lock"><div style="font-size:1.8rem">🔒</div><h3>The job board is locked</h3><p class="muted small">Only volunteers who've finished training can see and sign up for jobs.</p></div>`;
-function boardView(v, sc) {
+function myJobsView(v, sc) {
   const mine = S.jobs.filter((j) => crew(j.id).some((s) => s.vid === v.id)).sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
+  const total = S.history.reduce((t, h) => t + +h.hours, 0);
+  const intro = v.status === "trainee"
+    ? `<div class="note"><b>You're a trainee: ${sc} of ${SHADOW_SHIFTS_NEEDED} shadow shifts done.</b> You can take a job that's empty or that already has an experienced volunteer. Once you sign up for an empty job, only an experienced volunteer can take the second spot.</div>`
+    : `<div class="note"><b>You're an experienced volunteer.</b> Jobs where a trainee is waiting for a partner are shown first on Open jobs. Trainees can't go without you.</div>`;
+  return `${intro}
+  <div class="stats" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+    <div class="stat s-green"><span class="sico">${ic("cal")}</span><div><b>${mine.length}</b><span>Upcoming jobs</span></div></div>
+    <div class="stat s-sky"><span class="sico">${ic("clock")}</span><div><b>${fmtHours(total)}</b><span>Hours volunteered</span></div></div>
+    <div class="stat s-peach"><span class="sico">${ic("leaf")}</span><div><b>${S.history.length}</b><span>Jobs completed</span></div></div>
+  </div>
+  <section class="stack">
+    <div class="head"><div><h2>My upcoming jobs</h2><p>Full address and client contact show here once you've signed up.</p></div><button class="btn ghost" data-act="volNav" data-id="vboard">${ic("search")} Find a job</button></div>
+    ${mine.length ? `<div class="jobs">${mine.map((j) => myJobCard(j, v)).join("")}</div>` : `<div class="empty">You haven't signed up for anything yet. <button class="linkbtn" data-act="volNav" data-id="vboard">See open jobs</button></div>`}
+  </section>`;
+}
+function openBoard(v) {
   let open = S.jobs.filter((j) => !isFull(j) && !needsNewDates(j) && !crew(j.id).some((s) => s.vid === v.id));
   if (S.boardFilter === "skills") open = open.filter((j) => neededSkills(j.services).every((k) => v.skills.includes(k)));
   if (S.boardFilter === "exp") open = open.filter(needsExperienced);
   const rank = (j) => v.status === "experienced" ? (needsExperienced(j) ? 0 : 1) : (canJoin(v, j).ok ? 0 : 1);
   open.sort((a, b) => rank(a) - rank(b) || sortKey(a).localeCompare(sortKey(b)));
   const filters = [["all", "All open jobs"], ["skills", "Fits my skills"], ...(v.status === "experienced" ? [["exp", "Trainee needs a partner"]] : [])];
-  const intro = v.status === "trainee"
-    ? `<div class="note"><b>You're a trainee: ${sc} of ${SHADOW_SHIFTS_NEEDED} shadow shifts done.</b> You can take a job that's empty or that already has an experienced volunteer. Once you sign up for an empty job, only an experienced volunteer can take the second spot.</div>`
-    : `<div class="note"><b>You're an experienced volunteer.</b> Jobs where a trainee is waiting for a partner are shown first. Trainees can't go without you.</div>`;
-  return `${intro}
-  <section class="stack">
-    <div class="head"><div><h2>My upcoming jobs</h2><p>Full address and client contact show here once you've signed up.</p></div><button class="btn ghost" data-act="reload">Refresh</button></div>
-    ${mine.length ? `<div class="jobs">${mine.map((j) => myJobCard(j, v)).join("")}</div>` : `<div class="empty">You haven't signed up for anything yet. Pick a job below.</div>`}
-  </section>
-  <section class="stack">
-    <div class="head"><div><h2>Open jobs</h2><p>Every job needs 2 volunteers. If a job has no one yet, you pick the exact time from the days the client is free. Bring your own gloves; the client provides the tools.</p></div></div>
-    <div class="filters">${filters.map(([k, n]) => `<button data-act="boardFilter" data-id="${k}" aria-pressed="${S.boardFilter === k}">${n}</button>`).join("")}</div>
-    ${open.length ? `<div class="jobs">${open.map((j) => openJobCard(j, v)).join("")}</div>` : `<div class="empty">No open jobs right now. Check back soon.</div>`}
-  </section>`;
+  return `<div class="filters">${filters.map(([k, n]) => `<button data-act="boardFilter" data-id="${k}" aria-pressed="${S.boardFilter === k}">${n}</button>`).join("")}</div>
+    ${open.length ? `<div class="jobs">${open.map((j) => openJobCard(j, v)).join("")}</div>` : `<div class="empty">No open jobs right now. Check back soon.</div>`}`;
+}
+function hoursView(v) {
+  const total = S.history.reduce((t, h) => t + +h.hours, 0);
+  return `<div class="head"><div><h1>My hours</h1><p>Every job you finish is logged here, with the hours your crew recorded. Handy for school service hours.</p></div></div>
+  <div class="stats" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+    <div class="stat s-sky"><span class="sico">${ic("clock")}</span><div><b>${fmtHours(total)}</b><span>Total hours volunteered</span></div></div>
+    <div class="stat s-green"><span class="sico">${ic("leaf")}</span><div><b>${S.history.length}</b><span>Jobs completed</span></div></div>
+  </div>
+  ${S.history.length ? `<div class="card table-wrap"><table>
+    <thead><tr><th>Date</th><th>Work</th><th>Neighbourhood</th><th>Hours</th></tr></thead>
+    <tbody>${S.history.map((h) => `<tr><td><b>${fmtDate(h.date)}</b></td><td>${esc(h.services.map((x) => svc(x).name).join(" + "))}</td><td>${esc(h.area)}</td><td class="num"><b>${fmtHours(+h.hours)}</b></td></tr>`).join("")}</tbody>
+  </table></div>` : `<div class="empty">No finished jobs yet. When you and your partner mark a job done, the hours show up here.</div>`}
+  <p class="small muted">Need an official record of your hours? Ask a 1Yard admin; they can see every volunteer's total.</p>`;
 }
 function jobFacts(j, v, full) {
   const c = client(j.clientId), skills = neededSkills(j.services), have = neededTools(j.services).filter((t) => j.tools[t]), miss = missingTools(j);
@@ -447,6 +528,7 @@ function myJobCard(j, v) {
   let foot;
   if (confirming) foot = `<div class="confirm"><b>Leave this job?</b>${partner && !c.find((s) => s.vid === v.id).asTrainee && partner.asTrainee ? " Your trainee partner will need a new experienced volunteer." : ""}${!partner ? " The client's days will open up again for others." : ""}<div class="row"><button class="btn danger" data-act="leaveYes" data-id="${j.id}">Yes, leave</button><button class="btn ghost" data-act="confirmNo">Keep it</button></div></div>`;
   else if (S.picking === j.id) foot = picker(j, j.date + "|" + j.start, "Save new time");
+  else if (S.confirm === "done:" + j.id) foot = doneForm(j, "Mark as done");
   else foot = `<div class="foot">${full ? `<button class="btn" data-act="done" data-id="${j.id}">We finished this job</button>` : `<button class="btn ghost" data-act="pickOpen" data-id="${j.id}">Change time</button>`}<button class="btn danger" data-act="leave" data-id="${j.id}">Leave job</button></div>`;
   return `<article class="card job">
     <div class="row" style="justify-content:space-between"><span class="when">${whenText(j)}</span><span class="small muted">~${j.hours}h</span></div>
@@ -462,6 +544,7 @@ function myJobCard(j, v) {
 
 /* ---------------- ADMIN ---------------- */
 function adminView() {
+  if (S.adminPage === "settings") return settingsView();
   const people = S.volunteers.filter((v) => v.role !== "admin");
   const apps = people.filter((v) => v.status === "pending");
   const reqs = S.jobs.filter((j) => j.status === "review");
@@ -477,15 +560,16 @@ function adminView() {
   else if (tab === "reqs") body = reqs.length ? `<div class="list">${reqs.map(reviewCard).join("")}</div>` : `<div class="empty">No new client requests.</div>`;
   else if (tab === "jobs") body = (S.resched ? reschedPanel(job(S.resched)) : "") + (S.editing && job(S.editing)?.status === "scheduled" ? editForm(job(S.editing)) : "") + jobsTable();
   else body = volsTable(people);
+  const stat = (cls, icon, n, label, sub) => `<div class="stat ${cls}"><span class="sico">${ic(icon)}</span><div><b>${n}</b><span>${label}</span>${sub ? `<small>${sub}</small>` : ""}</div></div>`;
   return `
-  <div class="head"><div><h1>Admin dashboard</h1><p>Review new requests and volunteers, and make sure every job gets a full crew.</p></div><button class="btn ghost" data-act="reload">Refresh</button></div>
+  <div class="head"><div><h1>Admin dashboard</h1><p>Review new requests and volunteers, and make sure every job gets a full crew.</p></div><button class="btn" data-act="reload">${ic("refresh")} Refresh</button></div>
   <div class="stats">
-    <div class="stat ${calls.length ? "alert" : ""}"><b>${calls.length}</b><span>Clients to call</span></div>
-    <div class="stat ${reqs.length ? "alert" : ""}"><b>${reqs.length}</b><span>Client requests to review</span></div>
-    <div class="stat ${apps.length ? "alert" : ""}"><b>${apps.length}</b><span>Volunteer applications</span></div>
-    <div class="stat"><b>${needVol.length}</b><span>Jobs still needing volunteers${needExp.length ? ` (${needExp.length} trainee waiting)` : ""}</span></div>
+    ${stat("s-green", "phone", calls.length, "Clients to call")}
+    ${stat("s-sky", "file", reqs.length, "Client requests to review")}
+    ${stat("s-lilac", "users", apps.length, "Volunteer applications")}
+    ${stat("s-peach", "cal", needVol.length, "Jobs still needing volunteers", needExp.length ? `(${needExp.length} trainee waiting)` : "")}
   </div>
-  <div class="stack">
+  <div class="stack" id="admin-tabs">
     <div class="tabs" role="tablist">${tabs.map(([id, name, n]) => `<button role="tab" data-act="tab" data-id="${id}" aria-selected="${tab === id}">${name}${n ? `<span class="count">${n}</span>` : ""}</button>`).join("")}</div>
     ${body}
   </div>`;
@@ -526,7 +610,7 @@ function reviewCard(j) {
       ${j.notes ? `<div class="quote"><div class="label">Client's note</div>${esc(j.notes)}</div>` : ""}
       ${miss.length ? `<p class="small" style="color:var(--amber-fg)">Volunteers only bring gloves. Call the client to sort out the missing tools before publishing.</p>` : ""}
     </div>
-    <div class="side">
+    <div class="side-panel">
       <span class="label">Publish to volunteers</span>
       <p class="small muted">Volunteers will see the client's days and pick an exact start time. Fix the days with Edit details if they're wrong.</p>
       <label>Estimated time<select id="h-${j.id}">${[1, 2, 3, 4].map((h) => `<option value="${h}" ${h === 2 ? "selected" : ""}>${h} hour${h > 1 ? "s" : ""}</option>`).join("")}</select></label>
@@ -609,11 +693,13 @@ function jobsTable() {
   ${rows.length ? `<div class="card table-wrap"><table>
     <thead><tr><th>When</th><th>Job</th><th>Crew</th><th>Status</th><th></th></tr></thead>
     <tbody>${rows.map((j) => { const c = client(j.clientId); const lw = liveWindows(j); return `<tr>
-      <td>${(isLocked(j) || j.status === "done") && j.date ? `<b>${fmtDate(j.date)}</b><div class="muted small">${fmtTime(j.start)} · ~${j.hours}h</div>` : `<b>${lw.length} day option${lw.length === 1 ? "" : "s"}</b><div class="muted small">${lw.map((x) => fmtDate(x.date)).join(", ") || "all passed"}</div>`}</td>
-      <td><b>${esc(jobTitle(j))}</b><div class="muted small">${esc(c.name)} · ${esc(c.address)}, ${esc(c.area)}</div></td>
-      <td style="min-width:240px">${slots(j)}</td>
-      <td>${jChip(j)}</td>
-      <td><div class="row" style="justify-content:flex-end">${j.status === "scheduled" ? `${isFull(j) ? `<button class="btn" data-act="done" data-id="${j.id}">Mark done</button>` : ""}<button class="btn ghost" data-act="resched" data-id="${j.id}">Change time</button><button class="btn ghost" data-act="edit" data-id="${j.id}">Edit</button><button class="btn danger" data-act="acancel" data-id="${j.id}">Cancel</button>` : ""}</div></td>
+      <td style="white-space:nowrap">${j.status === "done" && j.date ? `<b>${fmtDate(j.date)}</b><div class="muted">${fmtTime(j.start)}</div>`
+        : isLocked(j) ? `<b>${fmtDate(j.date)}</b><div class="muted">${fmtTime(j.start)} – ${fmtTime(endTime(j.start, j.hours))}</div><div class="muted">(~${j.hours}h)</div>`
+        : lw.length ? `<b>${fmtDate(lw[0].date)}${lw.length > 1 ? ` –<br>${fmtDate(lw[lw.length - 1].date)}` : ""}</b><div class="muted">${lw.length} day option${lw.length === 1 ? "" : "s"}</div>` : `<b>No days left</b><div class="muted">Needs new dates</div>`}</td>
+      <td><b>${esc(jobTitle(j))}</b><div class="muted">${esc(c.name)} · ${esc(c.address)}, ${esc(c.area)}</div></td>
+      <td style="min-width:250px">${slots(j)}</td>
+      <td>${jChip(j)}${j.status === "done" ? `<div style="margin-top:10px"><select class="in" data-hours="${j.id}" aria-label="Hours worked" style="width:auto">${hourOptions(jobHours(j))}</select><div class="small muted">logged per volunteer</div></div>` : ""}</td>
+      <td>${S.confirm === "done:" + j.id ? doneForm(j, "Save as done") : j.status === "scheduled" ? `<div class="acts">${isFull(j) ? `<button class="btn" data-act="done" data-id="${j.id}">Mark done</button>` : ""}<button class="btn ghost" data-act="resched" data-id="${j.id}">Change time</button><button class="btn ghost" data-act="edit" data-id="${j.id}">Edit</button><button class="btn danger" data-act="acancel" data-id="${j.id}">Cancel</button></div>` : ""}</td>
     </tr>`; }).join("")}</tbody></table></div>` : `<div class="empty">No jobs here.</div>`}`;
 }
 function volsTable(people) {
@@ -621,17 +707,37 @@ function volsTable(people) {
   const list = [...people].sort((a, b) => order[a.status] - order[b.status]);
   if (!list.length) return `<div class="empty">No volunteers yet.</div>`;
   return `<div class="card table-wrap"><table>
-    <thead><tr><th>Volunteer</th><th>Level</th><th>Shadow shifts</th><th>Jobs done</th><th>Waiver</th><th></th></tr></thead>
+    <thead><tr><th>Volunteer</th><th>Level</th><th>Shadow shifts</th><th>Jobs done</th><th>Hours</th><th>Waiver</th><th></th></tr></thead>
     <tbody>${list.map((v) => `<tr>
       <td><b>${esc(v.name)}</b><div class="muted small">${esc(v.uni)} · ${esc(v.year)}<br>${esc(v.email)} · ${esc(v.phone)}</div></td>
       <td><select class="in" data-level="${v.id}" aria-label="Level for ${esc(v.name)}" style="min-width:190px">${Object.entries(V_STATUS).map(([k, [label]]) => `<option value="${k}" ${k === v.status ? "selected" : ""}>${label}</option>`).join("")}</select></td>
       <td class="num">${v.status === "trainee" ? `<b>${shadowCount(v.id)} of ${SHADOW_SHIFTS_NEEDED}</b>` : v.status === "experienced" ? "Complete" : "—"}</td>
       <td class="num">${jobsDone(v.id)}</td>
+      <td class="num"><b>${fmtHours(hoursFor(v.id))}</b></td>
       <td class="small">${v.waiverPath ? `<button class="btn ghost" data-act="waiver" data-id="${v.id}">📄 Open waiver</button>` : `<span class="muted">—</span>`}</td>
       <td>${S.confirm === "rmvol:" + v.id
         ? `<div class="confirm" style="min-width:220px"><b>Remove ${esc(first(v.name))}?</b><span class="small">Deletes their account and frees any upcoming jobs. They can apply again later.</span><div class="row"><button class="btn danger" data-act="rmVolYes" data-id="${v.id}">Yes, remove</button><button class="btn ghost" data-act="confirmNo">Cancel</button></div></div>`
         : `<button class="btn danger" data-act="rmVol" data-id="${v.id}">Remove</button>`}</td>
     </tr>`).join("")}</tbody></table></div>`;
+}
+
+function settingsView() {
+  const admins = S.volunteers.filter((v) => v.role === "admin"), others = S.volunteers.filter((v) => v.role !== "admin").sort((a, b) => a.name.localeCompare(b.name));
+  return `<div class="head"><div><h1>Settings</h1><p>Who can run the dashboard, and the details clients see.</p></div></div>
+  <section class="card stack">
+    <h2>Admins</h2>
+    <div class="list">${admins.map((a) => `<div class="row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:12px">
+      <div class="row"><span class="avatar" style="width:38px;height:38px;font-size:.95rem">${esc(a.name.charAt(0).toUpperCase())}</span><div><b>${esc(a.name)}</b>${a.id === S.me.id ? ` <span class="tag">You</span>` : ""}<div class="small muted">${esc(a.email)}</div></div></div>
+      ${a.id === S.me.id ? "" : `<button class="btn ghost" data-act="unadmin" data-id="${a.id}">Remove admin rights</button>`}</div>`).join("")}</div>
+    <div class="field"><label class="lbl" for="new-admin">Add an admin</label>
+      ${others.length ? `<div class="row" style="flex-wrap:nowrap"><select class="in" id="new-admin">${others.map((v) => `<option value="${v.id}">${esc(v.name)} · ${esc(v.email)}</option>`).join("")}</select><button class="btn" data-act="makeAdmin">Make admin</button></div>` : ""}
+      <p class="small muted">The person signs up first through <b>Volunteer log in → Apply here</b>. Then pick them here. They'll see the admin dashboard next time they log in.</p></div>
+  </section>
+  <section class="card stack">
+    <h2>Site details</h2>
+    <div class="kv"><div><span>Phone shown to clients</span>${esc(OFFICE_PHONE || "—")}</div><div><span>Season</span>${esc(SEASON.label)}</div><div><span>Training modules</span>${TRAINING.length}</div></div>
+    <p class="small muted">These live in <code>docs/config.js</code> and <code>docs/app.js</code> in the website's code.</p>
+  </section>`;
 }
 
 /* ============ ACTIONS ============ */
@@ -643,8 +749,18 @@ function showWizErr(e) { const el = $("#wiz-err"); el.textContent = e; el.hidden
 const A = {
   go: async (id) => { S.notice = ""; if (id === "home") { await goHome(); history.replaceState(null, "", location.pathname); } else S.view = id; scrollTo(0, 0); },
   reload: async () => { await refresh(); return "Up to date."; },
-  logout: async () => { await sb.auth.signOut(); S.me = null; S.view = "home"; S.notice = ""; },
-  tab: (id) => { S.adminTab = id; S.editing = null; S.resched = null; },
+  logout: async () => { await sb.auth.signOut(); S.me = null; S.view = "home"; S.notice = ""; S.adminPage = "dash"; S.volPage = "vhome"; },
+  tab: (id) => { S.adminTab = id; S.editing = null; S.resched = null; S.confirm = null; },
+  adminNav: (id) => {
+    S.editing = null; S.resched = null; S.confirm = null;
+    if (id === "settings") { S.adminPage = "settings"; scrollTo(0, 0); return; }
+    S.adminPage = "dash";
+    if (id !== "dash") { S.adminTab = id; setTimeout(() => $("#admin-tabs")?.scrollIntoView({ block: "start", behavior: "smooth" })); } else scrollTo(0, 0);
+  },
+  volNav: (id) => { S.volPage = id; S.picking = null; S.confirm = null; scrollTo(0, 0); },
+  hideBanner: () => { S.bannerHidden = true; try { localStorage.setItem("1yard-banner", SEASON.label); } catch {} },
+  makeAdmin: async () => { const id = $("#new-admin").value; await upd("profiles", id, { role: "admin", status: "experienced" }); await loadAdmin(); return `${vol(id).name} is now an admin.`; },
+  unadmin: async (id) => { await upd("profiles", id, { role: "volunteer" }); await loadAdmin(); return `${vol(id).name} is no longer an admin.`; },
   jobFilter: (id) => { S.jobFilter = id; },
   boardFilter: (id) => { S.boardFilter = id; },
   confirmNo: () => { S.confirm = null; },
@@ -708,8 +824,10 @@ const A = {
     S.confirm = null; await loadAdmin();
     return `${v.name} was removed.`;
   },
-  done: async (id) => {
-    const promoted = await rpc("finish_job", { p_job: id });
+  done: (id) => { S.confirm = "done:" + id; },
+  doneYes: async (id) => {
+    const promoted = await rpc("finish_job", { p_job: id, p_hours: +$("#dh-" + id).value });
+    S.confirm = null;
     await refresh();
     return promoted.length ? `Job done. ${promoted.join(" and ")} ${promoted.length > 1 ? "are" : "is"} now experienced!` : "Job marked as done.";
   },
@@ -809,6 +927,12 @@ document.addEventListener("input", (e) => {
 });
 document.addEventListener("change", async (e) => {
   const id = e.target.id;
+  if (e.target.dataset.hours) {
+    const sel = e.target; sel.disabled = true;
+    try { await upd("jobs", sel.dataset.hours, { actual_hours: +sel.value }); await loadAdmin(); render(); toast("Hours updated."); }
+    catch (err) { toast(err?.message || "Couldn't save the hours."); render(); }
+    return;
+  }
   // Admin override of a volunteer's level (e.g. skip shadow shifts for someone experienced).
   if (e.target.dataset.level) {
     const v = vol(e.target.dataset.level), status = e.target.value, sel = e.target;

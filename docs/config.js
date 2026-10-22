@@ -5,7 +5,7 @@ window.ONEYARD_CONFIG = {
   supabaseUrl: "https://ybjaifvfgparclbeliue.supabase.co",
   supabaseAnonKey: "sb_publishable_Gj6l_Yw-E8-2NrcHEud1SQ_QMOb9ILE",
 
-  officePhone: "(613) 555-0100",   // shown to clients — replace with the real number
+  officePhone: "416-431-0010",   // shown to clients
 
   // Training shown to approved volunteers. Swap in real links (YouTube, Google Drive, etc.).
   training: [
