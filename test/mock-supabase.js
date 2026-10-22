@@ -28,6 +28,10 @@ const ready = (async () => {
 
 let session = JSON.parse(sessionStorage.getItem("mock-session") || "null");
 const setSession = (s) => { session = s; sessionStorage.setItem("mock-session", JSON.stringify(s)); };
+const authListeners = [];
+const emit = (ev) => authListeners.forEach((cb) => cb(ev, session));
+// Test hook: pretend another tab changed the login without telling this one.
+window.__mockSwapSession = (s) => setSession(s);
 
 async function run(sql, params = []) {
   const db = await ready;
@@ -76,12 +80,13 @@ window.supabase = {
       },
       auth: {
         async getSession() { return { data: { session } }; },
-        async signOut() { setSession(null); return { error: null }; },
+        onAuthStateChange(cb) { authListeners.push(cb); return { data: { subscription: { unsubscribe() {} } } }; },
+        async signOut() { setSession(null); emit("SIGNED_OUT"); return { error: null }; },
         async signInWithPassword({ email, password }) {
           const db = await ready;
           const u = (await db.query(`select id, email from auth.users where email = $1 and password = $2`, [email, password])).rows[0];
           if (!u) return { data: null, error: { message: "Invalid login credentials" } };
-          setSession({ user: u }); return { data: { session }, error: null };
+          setSession({ user: u }); emit("SIGNED_IN"); return { data: { session }, error: null };
         },
         async signUp({ email, password, options }) {
           const db = await ready;

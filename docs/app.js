@@ -742,6 +742,12 @@ function settingsView() {
 
 /* ============ ACTIONS ============ */
 const SKIP = Symbol();
+// Turn database errors into something a person can act on.
+function friendly(err, fallback) {
+  const m = err?.message || "";
+  if (/permission denied|JWT|not authenticated/i.test(m)) { setTimeout(checkLogin); return "You're no longer logged in here. Please log in again."; }
+  return m || fallback;
+}
 const upd = async (table, id, patch) => must(await sb.from(table).update(patch).eq("id", id));
 const rpc = async (fn, args) => must(await sb.rpc(fn, args));
 function showWizErr(e) { const el = $("#wiz-err"); el.textContent = e; el.hidden = false; el.scrollIntoView({ block: "nearest" }); return SKIP; }
@@ -749,7 +755,7 @@ function showWizErr(e) { const el = $("#wiz-err"); el.textContent = e; el.hidden
 const A = {
   go: async (id) => { S.notice = ""; if (id === "home") { await goHome(); history.replaceState(null, "", location.pathname); } else S.view = id; scrollTo(0, 0); },
   reload: async () => { await refresh(); return "Up to date."; },
-  logout: async () => { await sb.auth.signOut(); S.me = null; S.view = "home"; S.notice = ""; S.adminPage = "dash"; S.volPage = "vhome"; },
+  logout: async () => { S.selfAuth = true; await sb.auth.signOut(); S.selfAuth = false; S.me = null; S.view = "home"; S.notice = ""; S.adminPage = "dash"; S.volPage = "vhome"; },
   tab: (id) => { S.adminTab = id; S.editing = null; S.resched = null; S.confirm = null; },
   adminNav: (id) => {
     S.editing = null; S.resched = null; S.confirm = null;
@@ -916,7 +922,7 @@ document.addEventListener("click", async (e) => {
     if (msg) toast(msg);
   } catch (err) {
     console.error(err);
-    toast(err?.message || "Something went wrong. Please try again.");
+    toast(friendly(err, "Something went wrong. Please try again."));
     try { await refresh(); } catch {}
     render();
   } finally { S.busy = false; b.classList.remove("busy"); }
@@ -930,7 +936,7 @@ document.addEventListener("change", async (e) => {
   if (e.target.dataset.hours) {
     const sel = e.target; sel.disabled = true;
     try { await upd("jobs", sel.dataset.hours, { actual_hours: +sel.value }); await loadAdmin(); render(); toast("Hours updated."); }
-    catch (err) { toast(err?.message || "Couldn't save the hours."); render(); }
+    catch (err) { toast(friendly(err, "Couldn't save the hours.")); render(); }
     return;
   }
   // Admin override of a volunteer's level (e.g. skip shadow shifts for someone experienced).
@@ -950,7 +956,7 @@ document.addEventListener("change", async (e) => {
       }
       await loadAdmin(); render();
       toast(`${v.name} is now: ${V_STATUS[status][0]}.`);
-    } catch (err) { toast(err?.message || "Couldn't change the level."); render(); }
+    } catch (err) { toast(friendly(err, "Couldn't change the level.")); render(); }
     return;
   }
   if (id === "waiver-file" || id === "done-training") {
@@ -965,7 +971,7 @@ document.addEventListener("submit", async (e) => {
   e.preventDefault();
   const form = e.target, btn = form.querySelector('button[type="submit"]');
   if (S.busy) return;
-  S.busy = true; btn.classList.add("busy");
+  S.busy = true; btn.classList.add("busy"); S.selfAuth = true;
   try {
     if (form.id === "login-form") {
       must(await sb.auth.signInWithPassword({ email: $("#l-email").value.trim(), password: $("#l-pass").value }));
@@ -984,8 +990,8 @@ document.addEventListener("submit", async (e) => {
     }
     render(); scrollTo(0, 0);
   } catch (err) {
-    toast(err?.message || "Something went wrong. Please try again.");
-  } finally { S.busy = false; btn.classList.remove("busy"); }
+    toast(friendly(err, "Something went wrong. Please try again."));
+  } finally { S.busy = false; btn.classList.remove("busy"); S.selfAuth = false; }
 });
 
 /* ============ START ============ */
@@ -1002,3 +1008,31 @@ document.addEventListener("submit", async (e) => {
   }
   render();
 })();
+
+// Every tab in a browser shares one login. If it changes in another tab (someone logs in
+// as a different person, or logs out), catch up here instead of acting as the wrong user.
+async function checkLogin() {
+  const before = S.me?.id || null;
+  await loadMe();
+  const after = S.me?.id || null;
+  if (before === after) return false;
+  if (after) { await goHome(); S.notice = `You're now logged in as <b>${esc(S.me.name)}</b>. The login changed in another tab of this browser.`; }
+  else if (before) { S.view = "login"; S.notice = "You were logged out, probably from another tab in this browser. Log in again to continue. Tip: to use two accounts at once, use a private window for the second one."; }
+  render();
+  return true;
+}
+if (sb) {
+  sb.auth.onAuthStateChange((event) => {
+    if (S.selfAuth || event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") return;
+    setTimeout(() => checkLogin().catch(() => {}));
+  });
+  // Coming back to the tab: make sure we're still the same person and show fresh data.
+  document.addEventListener("visibilitychange", async () => {
+    if (document.visibilityState !== "visible" || S.busy || S.selfAuth || !S.me) return;
+    try {
+      if (await checkLogin()) return;
+      const editing = S.editing || S.resched || S.picking || S.confirm || document.activeElement?.matches?.("input, textarea, select");
+      if (!editing && (S.view === "admin" || S.view === "volunteer")) { await refresh(); render(); }
+    } catch {}
+  });
+}
