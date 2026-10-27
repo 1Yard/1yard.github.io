@@ -26,6 +26,8 @@ const ready = (async () => {
   return db;
 })();
 
+window.__mockDb = ready; // test hook: run SQL directly when setting up demo data
+
 let session = JSON.parse(sessionStorage.getItem("mock-session") || "null");
 const setSession = (s) => { session = s; sessionStorage.setItem("mock-session", JSON.stringify(s)); };
 const authListeners = [];
@@ -43,13 +45,15 @@ async function run(sql, params = []) {
 }
 
 function table(name) {
-  let op = "select", patch = null, filters = [], single = false;
+  let op = "select", patch = null, filters = [], single = false, orderBy = "", lim = "";
   const q = {
     select() { op = op === "select" ? "select" : op; return q; },
     update(p) { op = "update"; patch = p; return q; },
     delete() { op = "delete"; return q; },
     eq(col, val) { filters.push([col, val]); return q; },
     maybeSingle() { single = true; return q; },
+    order(col, o = {}) { orderBy = ` order by ${col} ${o.ascending === false ? "desc" : "asc"}`; return q; },
+    limit(n) { lim = ` limit ${+n}`; return q; },
     then(res, rej) { return exec().then(res, rej); },
   };
   const toParam = (v) => (v !== null && typeof v === "object" && (!Array.isArray(v) || (v.length && typeof v[0] === "object")) ? JSON.stringify(v) : v);
@@ -61,7 +65,7 @@ function table(name) {
       const sets = Object.entries(patch).map(([k, v]) => { params.push(toParam(v)); return `${k} = $${params.length}`; });
       sql = `update public.${name} set ${sets.join(", ")}${cond()}`;
     } else if (op === "delete") sql = `delete from public.${name}${cond()}`;
-    else sql = `select * from public.${name}${cond()}`;
+    else sql = `select * from public.${name}${cond()}${orderBy}${lim}`;
     const r = await run(sql, params);
     if (r.error) return r;
     return { data: single ? r.data[0] || null : r.data, error: null };
@@ -75,7 +79,7 @@ window.supabase = {
       from: table,
       async rpc(fn, args = {}) {
         const keys = Object.keys(args);
-        const r = await run(`select public.${fn}(${keys.map((k, i) => `${k} => $${i + 1}`).join(", ")}) as r`, keys.map((k) => (args[k] !== null && typeof args[k] === "object" ? JSON.stringify(args[k]) : args[k])));
+        const r = await run(`select public.${fn}(${keys.map((k, i) => `${k} => $${i + 1}`).join(", ")}) as r`, keys.map((k) => (args[k] !== null && typeof args[k] === "object" && !(Array.isArray(args[k]) && typeof args[k][0] !== "object") ? JSON.stringify(args[k]) : args[k])));
         return r.error ? r : { data: r.data[0].r, error: null };
       },
       auth: {

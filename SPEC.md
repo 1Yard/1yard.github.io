@@ -100,3 +100,11 @@ job_signups   id, job_id, volunteer_id, as_trainee bool, created_at   -- unique(
 
 ## Admin settings
 **Settings** page: make any signed-up person an admin, or remove admin rights (not your own).
+
+## Notifications, drop-outs, calendar, reports, call notes
+- **Bell**: `notifications` table, created only by database triggers/functions; each person reads and marks read only their own (RLS). The site checks every minute.
+- **Email**: triggers write to `email_outbox` (unique `dedupe_key` per event + recipient, so nobody gets the same email twice). `email.sql` pokes the `send-emails` Edge Function on insert (pg_net) and every 5 min (pg_cron); it claims rows with `skip locked`, sends via Resend with an Idempotency-Key, and logs sent/failed. Hourly `daily_tasks()`: reminders at 6pm Kingston time, needs-new-dates alerts.
+- **"I can't make it"** (`leave_job(job, reason)`): allowed until the start time. Once a crew has been confirmed (`crewed_at`), the time stays locked even if one or both leave; new volunteers join at that time, and only an admin can change it. The job goes back on the admin To call list (`dropout_at`). Partner + admins notified; urgent within 24 hours.
+- **Add to calendar**: crew-only, on the job card (Google link + .ics) and in the crew-confirmed email.
+- **Hours log**: optional note + optional concern (safety/injury, client not home, bigger than described, other) in `job_reports`, admins only. A concern sends an urgent bell + email to admins.
+- **Call notes**: `admin_notes` (author, time, text), admins only; on the request, To call card and Jobs table.

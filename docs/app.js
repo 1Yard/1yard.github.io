@@ -28,6 +28,7 @@ const YEARS = ["1st year", "2nd year", "3rd year", "4th year", "5th year or more
 const TRAINING = CFG.training || [];
 const SHADOW_SHIFTS_NEEDED = 2;
 const OFFICE_PHONE = CFG.officePhone || "";
+const CONCERNS = { safety: "Safety or injury", not_home: "Client wasn't home", bigger: "Job was bigger than described", other: "Other" };
 const TOKENS_KEY = "1yard-my-requests";
 
 /* ============ STATE ============ */
@@ -37,6 +38,7 @@ let S = {
   bannerHidden: (() => { try { return localStorage.getItem("1yard-banner") === SEASON.label; } catch { return false; } })(),
   wiz: null, confirm: null, editing: null, resched: null, picking: null,
   token: null, request: null, justSent: false, notice: "", busy: false,
+  notifs: [], bellOpen: false, reports: [], adminNotes: [], emails: [], go: null, flash: null,
 };
 
 /* ============ HELPERS ============ */
@@ -63,7 +65,8 @@ const isFull = (j) => crew(j.id).length >= 2;
 const canSeeBoard = (v) => v && (v.status === "trainee" || v.status === "experienced");
 const liveWindows = (j) => (j.windows || []).filter((x) => x.date > today()).sort((a, b) => a.date.localeCompare(b.date));
 const windowText = (x) => `${fmtDate(x.date)} · ${PARTS[x.part].name.toLowerCase()} (${PARTS[x.part].range})`;
-const isLocked = (j) => !!j.date && !!j.start && crew(j.id).length > 0;
+// The time is fixed once someone picked it, and stays fixed after a confirmed crew loses a volunteer.
+const isLocked = (j) => !!j.date && !!j.start && (crew(j.id).length > 0 || !!j.crewedAt);
 const whenText = (j, long) => `${fmtDate(j.date, long)} at ${fmtTime(j.start)}`;
 const needsNewDates = (j) => j.status === "scheduled" && !isFull(j) && (isLocked(j) ? j.date <= today() : liveWindows(j).length === 0);
 const sortKey = (j) => (isLocked(j) || j.status === "done" ? (j.date || "") + (j.start || "").padStart(5, "0") : liveWindows(j)[0]?.date || j.windows?.[0]?.date || "");
@@ -73,7 +76,8 @@ function startTimes(part, hours) {
   return out;
 }
 const timeChoices = (j, cur) => liveWindows(j).map((x) => `<optgroup label="${windowText(x)}">${startTimes(x.part, j.hours).map((t) => `<option value="${x.date}|${t}" ${cur === x.date + "|" + t ? "selected" : ""}>${fmtDate(x.date)} · ${fmtTime(t)}</option>`).join("")}</optgroup>`).join("");
-const callItems = () => S.jobs.filter((j) => j.status === "scheduled").flatMap((j) => isFull(j) && !j.toldAt ? [{ j, kind: "tell" }] : needsNewDates(j) ? [{ j, kind: "dates" }] : []);
+const droppedSinceCall = (j) => j.dropoutAt && !isFull(j) && (!j.toldAt || j.toldAt < j.dropoutAt);
+const callItems = () => S.jobs.filter((j) => j.status === "scheduled").flatMap((j) => isFull(j) && !j.toldAt ? [{ j, kind: "tell" }] : needsNewDates(j) ? [{ j, kind: "dates" }] : droppedSinceCall(j) ? [{ j, kind: "drop" }] : []);
 function windowRows(prefix, wins) {
   return `<div class="winrows">${[0, 1, 2, 3].map((i) => { const x = wins[i] || {}; return `<div class="row"><input type="date" id="${prefix}-date-${i}" value="${x.date || ""}" aria-label="Date option ${i + 1}"><select id="${prefix}-part-${i}" aria-label="Time of day ${i + 1}">${Object.entries(PARTS).map(([k, p]) => `<option value="${k}" ${k === (x.part || "any") ? "selected" : ""}>${p.name} (${p.range})</option>`).join("")}</select></div>`; }).join("")}</div>`;
 }
@@ -129,7 +133,7 @@ const rememberToken = (t) => { try { localStorage.setItem(TOKENS_KEY, JSON.strin
 /* ============ DATA (Supabase) ============ */
 const mapProfile = (p) => ({ id: p.id, role: p.role, name: p.name, email: p.email, phone: p.phone, uni: p.university, year: p.year, skills: p.skills || [], avail: p.availability || [], why: p.why, status: p.status, appliedAt: p.applied_at, reviewedAt: p.reviewed_at, trainedAt: p.trained_at, promotedAt: p.promoted_at, waiverPath: p.waiver_path });
 const mapClient = (c) => ({ id: c.id, name: c.name, phone: c.phone, email: c.email, contact: c.contact, address: c.address, postal: c.postal, area: c.area });
-const mapJob = (j) => ({ id: j.id, clientId: j.client_id, services: j.services, tools: j.tools || {}, flags: j.flags || [], notes: j.notes || "", windows: j.windows || [], status: j.status, date: j.date, start: j.start_time, hours: j.hours, createdAt: j.created_at, toldAt: j.told_at, attempts: j.attempts, lastAttemptAt: j.last_attempt_at, timeChangedAt: j.time_changed_at, publishedAt: j.published_at, doneAt: j.done_at, editedAt: j.edited_at, actualHours: j.actual_hours });
+const mapJob = (j) => ({ id: j.id, clientId: j.client_id, services: j.services, tools: j.tools || {}, flags: j.flags || [], notes: j.notes || "", windows: j.windows || [], status: j.status, date: j.date, start: j.start_time, hours: j.hours, createdAt: j.created_at, toldAt: j.told_at, attempts: j.attempts, lastAttemptAt: j.last_attempt_at, timeChangedAt: j.time_changed_at, publishedAt: j.published_at, doneAt: j.done_at, editedAt: j.edited_at, actualHours: j.actual_hours, crewedAt: j.crewed_at, dropoutAt: j.dropout_at });
 const mapSignup = (s) => ({ id: s.id, jobId: s.job_id, vid: s.volunteer_id, asTrainee: s.as_trainee, at: s.created_at });
 const must = ({ data, error }) => { if (error) throw error; return data; };
 
@@ -140,8 +144,15 @@ async function loadMe() {
   S.me = p ? mapProfile(p) : null;
 }
 async function loadAdmin() {
-  const [p, c, j, s] = await Promise.all([sb.from("profiles").select("*"), sb.from("clients").select("*"), sb.from("jobs").select("*"), sb.from("job_signups").select("*")]);
+  const [p, c, j, s, rep, an, em] = await Promise.all([sb.from("profiles").select("*"), sb.from("clients").select("*"), sb.from("jobs").select("*"), sb.from("job_signups").select("*"),
+    sb.from("job_reports").select("*"), sb.from("admin_notes").select("*"), sb.from("email_outbox").select("*").order("created_at", { ascending: false }).limit(40)]);
   S.volunteers = must(p).map(mapProfile); S.clients = must(c).map(mapClient); S.jobs = must(j).map(mapJob); S.signups = must(s).map(mapSignup);
+  // Tables added with notifications; tolerate them missing until the database is updated.
+  S.reports = rep.error ? [] : rep.data; S.adminNotes = an.error ? [] : an.data.sort((a, b) => a.created_at.localeCompare(b.created_at)); S.emails = em.error ? [] : em.data;
+}
+async function loadNotifs() {
+  const { data, error } = await sb.from("notifications").select("*").order("created_at", { ascending: false }).limit(40);
+  S.notifs = error ? [] : data;
 }
 // The volunteer board comes from one server function that only returns what this volunteer may see.
 async function loadBoard() {
@@ -152,7 +163,7 @@ async function loadBoard() {
   for (const b of data.jobs) {
     const cid = "c-" + b.id;
     S.clients.push({ id: cid, name: b.client_name || "", phone: b.client_phone || "", address: b.address || "", postal: b.postal || "", area: b.area });
-    S.jobs.push({ id: b.id, clientId: cid, services: b.services, tools: b.tools || {}, flags: b.flags || [], notes: b.notes || "", windows: b.windows || [], status: b.status, date: b.date, start: b.start_time, hours: b.hours, timeChangedAt: b.time_changed_at, createdAt: b.created_at });
+    S.jobs.push({ id: b.id, clientId: cid, services: b.services, tools: b.tools || {}, flags: b.flags || [], notes: b.notes || "", windows: b.windows || [], status: b.status, date: b.date, start: b.start_time, hours: b.hours, timeChangedAt: b.time_changed_at, createdAt: b.created_at, crewedAt: b.crewed_at });
     for (const m of b.crew) {
       S.signups.push({ id: b.id + m.id, jobId: b.id, vid: m.id, asTrainee: m.as_trainee, at: m.at });
       const known = vol(m.id);
@@ -163,8 +174,8 @@ async function loadBoard() {
 }
 async function loadRequest() { S.request = /^[0-9a-f-]{36}$/i.test(S.token || "") ? must(await sb.rpc("get_request", { tok: S.token })) : null; }
 async function refresh() {
-  if (S.view === "admin") await loadAdmin();
-  else if (S.view === "volunteer") { await loadMe(); await loadBoard(); }
+  if (S.view === "admin") await Promise.all([loadAdmin(), loadNotifs()]);
+  else if (S.view === "volunteer") { await loadMe(); await Promise.all([loadBoard(), loadNotifs()]); }
   else if (S.view === "request") await loadRequest();
 }
 async function goHome() {
@@ -186,6 +197,7 @@ const ICON = {
   leaf: '<path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.5 19 2c1 2 2 4.2 2 8 0 5.5-4.8 10-10 10Z"/><path d="M2 21c0-3 1.9-5.4 5.1-6"/>',
   x: '<path d="M18 6 6 18M6 6l12 12"/>',
   clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
   search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
 };
 const ic = (n) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${ICON[n]}</svg>`;
@@ -216,7 +228,7 @@ function render() {
         <div class="side-art">${ART}<div class="tag-line"><b>1Yard</b><span>Neighbour to neighbour.</span></div></div>
       </aside>
       <div class="main">
-        <div class="mtop"><span class="who">${esc(first(S.me.name))} · ${S.me.role === "admin" ? "admin" : "volunteer"}</span><span class="avatar">${esc((S.me.name || "?").trim().charAt(0).toUpperCase())}</span><button class="btn ghost" data-act="logout">Log out</button></div>
+        <div class="mtop"><div class="bell-wrap" id="bell">${bellHtml()}</div><span class="who">${esc(first(S.me.name))} · ${S.me.role === "admin" ? "admin" : "volunteer"}</span><span class="avatar">${esc((S.me.name || "?").trim().charAt(0).toUpperCase())}</span><button class="btn ghost" data-act="logout">Log out</button></div>
         <div class="content">${banner}${body}${foot}</div>
       </div></div>`;
   } else {
@@ -226,6 +238,46 @@ function render() {
       <div class="pwrap"><div class="content ${clientish ? "client" : ""}">${banner}${body}${foot}</div></div>`;
   }
 }
+/* ---------------- BELL ---------------- */
+const whenShort = (iso) => new Date(iso).toLocaleString("en-CA", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+function bellHtml() {
+  const unread = S.notifs.filter((n) => !n.read_at).length;
+  const btn = `<button class="bellbtn" data-act="bell" aria-label="Notifications${unread ? `, ${unread} unread` : ""}" aria-expanded="${S.bellOpen}">${ic("bell")}${unread ? `<span class="dot">${unread > 9 ? "9+" : unread}</span>` : ""}</button>`;
+  if (!S.bellOpen) return btn;
+  return btn + `<div class="bellpanel" role="dialog" aria-label="Notifications">
+    <div class="bellhead"><b>Notifications</b>${unread ? `<button class="linkbtn" data-act="notifAllRead">Mark all read</button>` : ""}</div>
+    ${S.notifs.length ? S.notifs.map((n) => `<button class="notif ${n.read_at ? "" : "unread"} ${n.urgent ? "urgent" : ""}" data-act="notifOpen" data-id="${n.id}">
+      ${n.urgent ? `<span class="urg">Urgent</span>` : ""}<span class="msg">${esc(n.message)}</span><span class="when">${ago(n.created_at)}</span></button>`).join("")
+      : `<p class="muted small" style="padding:16px">Nothing yet. Updates about your jobs will show up here.</p>`}
+  </div>`;
+}
+const drawBell = () => { const el = $("#bell"); if (el) el.innerHTML = bellHtml(); };
+// Where a notification (or an email link like ?go=job:123) takes you.
+function goTo(link) {
+  if (!link || !S.me) return;
+  const [kind, id] = link.split(":");
+  if (S.view === "volunteer") {
+    if (kind === "job") S.volPage = crew(id).some((s) => s.vid === S.me.id) ? "vhome" : "vboard";
+    else if (["vhome", "vboard", "vhours"].includes(kind)) S.volPage = kind;
+    S.flash = kind === "job" && job(id) ? "job-" + id : null;
+  } else if (S.view === "admin") {
+    S.adminPage = "dash"; S.editing = null; S.resched = null;
+    if (["calls", "reqs", "apps"].includes(kind)) { S.adminTab = kind; S.flash = "admin-tabs"; }
+    else if (kind === "jobs") {
+      const j = job(id); S.adminTab = "jobs";
+      if (j) S.jobFilter = j.status === "scheduled" ? "upcoming" : "past";
+      S.flash = j ? "row-" + id : "admin-tabs";
+    }
+  }
+  S.bellOpen = false;
+  setTimeout(() => { const el = S.flash && document.getElementById(S.flash); if (el) { el.scrollIntoView({ block: "center", behavior: "smooth" }); el.classList.add("flash"); } S.flash = null; }, 30);
+}
+// New notifications arrive by checking every minute while the page is open.
+setInterval(async () => {
+  if (!sb || !S.me || S.busy || document.visibilityState !== "visible" || !["admin", "volunteer"].includes(S.view)) return;
+  try { await loadNotifs(); drawBell(); } catch {}
+}, 60000);
+
 const navItem = (id, label, icon, on, count) => `<button class="nav-item ${on ? "on" : ""}" data-act="${S.view === "admin" ? "adminNav" : "volNav"}" data-id="${id}">${ic(icon)}<span>${label}</span>${count ? `<span class="count">${count}</span>` : ""}</button>`;
 function sideNav() {
   if (S.view === "admin") {
@@ -257,7 +309,31 @@ const hoursFor = (vid) => S.signups.filter((s) => s.vid === vid && job(s.jobId)?
 const fmtHours = (h) => (Math.round(h * 10) / 10).toString().replace(/\.0$/, "");
 const hourOptions = (cur) => [...Array(24)].map((_, i) => (i + 1) / 2).map((h) => `<option value="${h}" ${+cur === h ? "selected" : ""}>${fmtHours(h)} hour${h === 1 ? "" : "s"}</option>`).join("");
 const doneForm = (j, label) => `<div class="confirm ok"><b>How many hours did the job take?</b><span class="small">Counts toward both volunteers' hours.</span>
-  <div class="row"><select id="dh-${j.id}" aria-label="Hours worked">${hourOptions(j.hours)}</select><button class="btn" data-act="doneYes" data-id="${j.id}">${label}</button><button class="btn ghost" data-act="confirmNo">Cancel</button></div></div>`;
+  <select id="dh-${j.id}" aria-label="Hours worked" style="justify-self:start">${hourOptions(j.hours)}</select>
+  <label class="small" for="dn-${j.id}"><b>Anything the team should know?</b> <span class="muted">(optional · only admins see this)</span></label>
+  <textarea id="dn-${j.id}" rows="2" placeholder="e.g. Client asked about raking again in November"></textarea>
+  <label class="check"><input type="checkbox" id="dc-${j.id}" data-concern="${j.id}"> Report a concern</label>
+  <div id="dcw-${j.id}" class="stack" style="gap:6px" hidden>
+    <select id="dct-${j.id}" aria-label="Type of concern" style="justify-self:start">${Object.entries(CONCERNS).map(([k, n]) => `<option value="${k}">${n}</option>`).join("")}</select>
+    <textarea id="dcd-${j.id}" rows="2" placeholder="What happened? An admin will follow up."></textarea>
+  </div>
+  <div class="row"><button class="btn" data-act="doneYes" data-id="${j.id}">${label}</button><button class="btn ghost" data-act="confirmNo">Cancel</button></div></div>`;
+// "Add to calendar" for the crew: a Google Calendar link and a downloadable .ics file.
+const calStamp = (d) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+function calInfo(j) {
+  const c = client(j.clientId), s = startsAt(j), e = new Date(s.getTime() + j.hours * 36e5);
+  return { s, e, title: "1Yard: " + jobTitle(j), where: [c.address, c.postal].filter(Boolean).join(", "),
+    details: `1Yard volunteer job. The client provides the tools; bring your own gloves. ${location.origin}${location.pathname}?go=job:${j.id}` };
+}
+function gcalUrl(j) {
+  const x = calInfo(j), u = encodeURIComponent;
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${u(x.title)}&dates=${calStamp(x.s)}/${calStamp(x.e)}&location=${u(x.where)}&details=${u(x.details)}`;
+}
+function icsText(j) {
+  const x = calInfo(j), e = (t) => t.replace(/[\\;,]/g, (m) => "\\" + m);
+  return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//1Yard//Volunteer jobs//EN", "BEGIN:VEVENT", `UID:${j.id}@1yard.ca`, `DTSTAMP:${calStamp(new Date())}`,
+    `DTSTART:${calStamp(x.s)}`, `DTEND:${calStamp(x.e)}`, `SUMMARY:${e(x.title)}`, `LOCATION:${e(x.where)}`, `DESCRIPTION:${e(x.details)}`, "END:VEVENT", "END:VCALENDAR", ""].join("\r\n");
+}
 const setupView = () => `<div class="card stack"><h2>Almost there</h2><p>Add your Supabase URL and key to <code>docs/config.js</code> to turn the site on. See README.md.</p></div>`;
 
 /* ---------------- PUBLIC HOME ---------------- */
@@ -290,6 +366,7 @@ function requestView() {
   let step = 1, msg = "";
   if (r.status === "review") msg = "We got your request. We'll call you soon to check the details.";
   else if (r.status === "scheduled" && r.needs_new_dates) { step = 2; msg = "We couldn't find volunteers for your days. We'll call you to pick new ones."; }
+  else if (r.status === "scheduled" && !full && r.crewed && r.date) { step = 2; msg = `Your visit is set for <b>${fmtDate(r.date, true)} at ${fmtTime(r.start_time)}</b>. One volunteer can't come anymore, so we're finding someone else for that time. We'll call you if anything changes.`; }
   else if (r.status === "scheduled" && !full) { step = 2; msg = `We're finding 2 volunteers for one of your days:<ul class="wins" style="margin-top:6px;font-size:1rem">${wins.map((x) => `<li>${fmtDate(x.date, true)}, ${PARTS[x.part].name.toLowerCase()}</li>`).join("")}</ul>`; }
   else if (r.status === "scheduled") { step = 3; msg = `<b>${crewNames.map(esc).join(" and ")}</b> will come on <b>${fmtDate(r.date, true)} at ${fmtTime(r.start_time)}</b>.`; }
   else if (r.status === "done") { step = 4; msg = `All done on ${fmtDate(r.date, true)}. Thank you for letting us help!`; }
@@ -355,7 +432,7 @@ function wizardView() {
   else if (step === "you") q = `<h1>How can we reach you?</h1>
     <div class="field"><label class="lbl" for="w-name">Your name</label><input type="text" id="w-name" data-w="name" value="${esc(d.name)}" autocomplete="name"></div>
     <div class="field"><label class="lbl" for="w-phone">Phone number</label><input type="tel" id="w-phone" data-w="phone" value="${esc(d.phone)}" autocomplete="tel"></div>
-    <div class="field"><label class="lbl" for="w-email">Email <span class="muted">(optional)</span></label><input type="email" id="w-email" data-w="email" value="${esc(d.email)}" autocomplete="email"></div>
+    <div class="field"><label class="lbl" for="w-email">Email, if you'd like reminders <span class="muted">(optional)</span></label><input type="email" id="w-email" data-w="email" value="${esc(d.email)}" autocomplete="email"></div>
     <p class="lbl">How should we contact you?</p><div class="tiles">${Object.entries(CONTACT).map(([k, x]) => tile("contact", k, k === "phone" ? "📞" : k === "email" ? "✉️" : "👍", x, "")).join("")}</div>`;
   else {
     const rows = [
@@ -542,7 +619,7 @@ function openJobCard(j, v) {
   const action = !r.ok ? `<button class="btn locked" disabled title="${esc(r.why)}">🔒 ${esc(r.why)}</button>`
     : locked ? `<button class="btn" data-act="join" data-id="${j.id}">Sign up for ${fmtTime(j.start)}</button>`
     : `<button class="btn" data-act="pickOpen" data-id="${j.id}">Sign up and pick a time</button>`;
-  return `<article class="card job ${pri ? "priority" : ""}">
+  return `<article class="card job ${pri ? "priority" : ""}" id="job-${j.id}">
     ${jobTop(j)}
     ${jobFacts(j, v, false)}
     ${slots(j)}
@@ -550,21 +627,32 @@ function openJobCard(j, v) {
   </article>`;
 }
 function myJobCard(j, v) {
-  const c = crew(j.id), partner = c.find((s) => s.vid !== v.id), full = c.length >= 2, pv = partner && vol(partner.vid);
-  const confirming = S.confirm === "leave:" + j.id;
+  const c = crew(j.id), me = c.find((s) => s.vid === v.id), partner = c.find((s) => s.vid !== v.id), full = c.length >= 2, pv = partner && vol(partner.vid);
+  const started = hasStarted(j), soon = isLocked(j) && startsAt(j) - Date.now() < 864e5;
+  const cant = started ? "" : `<button class="btn danger" data-act="leave" data-id="${j.id}">I can't make it</button>`;
   let foot;
-  if (confirming) foot = `<div class="confirm"><b>Leave this job?</b>${partner && !c.find((s) => s.vid === v.id).asTrainee && partner.asTrainee ? " Your trainee partner will need a new experienced volunteer." : ""}${!partner ? " The client's days will open up again for others." : ""}<div class="row"><button class="btn danger" data-act="leaveYes" data-id="${j.id}">Yes, leave</button><button class="btn ghost" data-act="confirmNo">Keep it</button></div></div>`;
+  if (S.confirm === "leave:" + j.id) foot = `<div class="confirm"><b>Can't make it?</b>
+    <span class="small">${j.crewedAt ? "The time stays the same and your spot goes back on the job board. Your partner and the 1Yard admins will be told." : partner ? "Your spot goes back on the job board and your partner will be told." : "The client's days open up again for other volunteers."}${partner && !me.asTrainee && partner.asTrainee ? " Your trainee partner will need a new experienced volunteer." : ""}</span>
+    ${soon && j.crewedAt ? `<span class="small"><b>This is short notice. Please also text your partner${pv ? ` (${esc(pv.phone)})` : ""}.</b></span>` : ""}
+    <label class="small" for="lr-${j.id}">Reason <span class="muted">(optional · only admins see it)</span></label>
+    <textarea id="lr-${j.id}" rows="2" placeholder="e.g. My exam was moved"></textarea>
+    <div class="row"><button class="btn danger" data-act="leaveYes" data-id="${j.id}">Yes, take me off this job</button><button class="btn ghost" data-act="confirmNo">Keep it</button></div></div>`;
   else if (S.picking === j.id) foot = picker(j, j.date + "|" + j.start, "Save new time");
   else if (S.confirm === "done:" + j.id) foot = doneForm(j, "Mark as done");
-  else if (full && !hasStarted(j)) foot = `<div class="foot"><span class="stack" style="gap:2px"><button class="btn" disabled>We finished this job</button><span class="small muted">You can mark this job complete after ${fmtDate(j.date)}, ${fmtTime(j.start)}.</span></span><button class="btn danger" data-act="leave" data-id="${j.id}">Leave job</button></div>`;
-  else foot = `<div class="foot">${full ? `<button class="btn" data-act="done" data-id="${j.id}">We finished this job</button>` : `<button class="btn ghost" data-act="pickOpen" data-id="${j.id}">Change time</button>`}<button class="btn danger" data-act="leave" data-id="${j.id}">Leave job</button></div>`;
-  return `<article class="card job">
+  else if (full && started) foot = `<div class="foot"><button class="btn" data-act="done" data-id="${j.id}">We finished this job</button><span class="small muted">Something wrong? Call the 1Yard admin.</span></div>`;
+  else if (full) foot = `<div class="foot"><span class="stack" style="gap:2px"><button class="btn" disabled>We finished this job</button><span class="small muted">You can mark this job complete after ${fmtDate(j.date)}, ${fmtTime(j.start)}.</span></span>${cant}</div>`;
+  else foot = `<div class="foot">${j.crewedAt ? `<span class="small muted">This time was confirmed with the client. Only an admin can change it.</span>` : `<button class="btn ghost" data-act="pickOpen" data-id="${j.id}">Change time</button>`}${cant}</div>`;
+  const cal = isLocked(j) && (full || j.crewedAt) && !started ? `<div class="row calrow"><span class="label">Add to calendar</span>
+    <a class="btn ghost" href="${esc(gcalUrl(j))}" target="_blank" rel="noopener">${ic("cal")} Google Calendar</a>
+    <button class="btn ghost" data-act="ics" data-id="${j.id}">Download .ics file</button></div>` : "";
+  return `<article class="card job" id="job-${j.id}">
     ${jobTop(j)}
     ${j.timeChangedAt ? `<div class="alertline">⚠ An admin changed the time ${ago(j.timeChangedAt)}. It's now ${whenText(j)}.</div>` : ""}
     ${jobFacts(j, v, true)}
     ${slots(j)}
-    ${pv ? `<div class="picker" style="gap:2px"><span class="label">Your partner</span><b>${esc(pv.name)}</b><span class="small">📞 ${esc(pv.phone)} · ✉️ ${esc(pv.email)}</span><span class="small muted">Running late or can't make it? Text your partner and let the 1Yard admin know.</span></div>`
-      : `<p class="small">${needsExperienced(j) ? "Waiting for an experienced volunteer to join you." : "Waiting for a second volunteer."} You can change the time until someone joins.</p>`}
+    ${pv ? `<div class="picker" style="gap:2px"><span class="label">Your partner</span><b>${esc(pv.name)}</b><span class="small">📞 ${esc(pv.phone)} · ✉️ ${esc(pv.email)}</span><span class="small muted">Running late? Text your partner and let the 1Yard admin know.</span></div>`
+      : `<p class="small">${j.crewedAt ? "Your partner can't make it anymore. We're finding a new one for the same time. Please don't go alone." : `${needsExperienced(j) ? "Waiting for an experienced volunteer to join you." : "Waiting for a second volunteer."} You can change the time until someone joins.`}</p>`}
+    ${cal}
     ${foot}
   </article>`;
 }
@@ -636,6 +724,7 @@ function reviewCard(j) {
       ${j.flags.length ? `<div class="row"><span class="label">Heads up</span>${j.flags.map((f) => `<span class="tag">${FLAGS[f].em} ${FLAGS[f].name}</span>`).join("")}</div>` : ""}
       ${j.notes ? `<div class="quote"><div class="label">Client's note</div>${esc(j.notes)}</div>` : ""}
       ${miss.length ? `<p class="small" style="color:var(--amber-fg)">Volunteers only bring gloves. Call the client to sort out the missing tools before publishing.</p>` : ""}
+      ${notesBlock(j)}
     </div>
     <div class="side-panel">
       <span class="label">Publish to volunteers</span>
@@ -671,6 +760,16 @@ function editForm(j) {
     <div class="row"><button class="btn" data-act="editSave" data-id="${j.id}">Save changes</button><button class="btn ghost" data-act="editCancel">Cancel</button></div>
   </article>`;
 }
+// Admin-only call notes on a request/job, and notes/concerns from the crew's hours log.
+function notesBlock(j) {
+  const list = S.adminNotes.filter((n) => n.job_id === j.id);
+  return `<div class="anotes"><span class="label">Call notes</span>
+    ${list.map((n) => `<div class="anote"><span class="small muted">${whenShort(n.created_at)} · ${esc(first(n.author_name) || "Admin")}</span> ${esc(n.body)}</div>`).join("")}
+    <div class="row" style="flex-wrap:nowrap"><input type="text" class="in" id="an-${j.id}" placeholder="e.g. Called Tues, prefers mornings" aria-label="Add a call note"><button class="btn ghost" data-act="addNote" data-id="${j.id}">Add note</button></div></div>`;
+}
+const reportsBlock = (j) => S.reports.filter((r) => r.job_id === j.id).map((r) => `<div class="report ${r.concern ? "warn" : ""}">
+  <b>${r.concern ? "⚠ Concern: " + esc(CONCERNS[r.concern]) : "Crew note"}</b> <span class="small muted">from ${esc(r.reporter_name || "a volunteer")} · ${whenShort(r.created_at)}</span>
+  ${r.concern_detail ? `<div>${esc(r.concern_detail)}</div>` : ""}${r.note ? `<div>${r.concern ? `<b>Note:</b> ` : ""}${esc(r.note)}</div>` : ""}</div>`).join("");
 function callsView(items) {
   if (!items.length) return `<div class="empty">Nobody to call right now. Clients show up here when their crew is set, or when none of their days worked out.</div>`;
   return `<div class="list">${items.map(({ j, kind }) => {
@@ -678,15 +777,18 @@ function callsView(items) {
     if (S.resched === j.id) return reschedPanel(j);
     return `<article class="card call">
       <div class="stack" style="gap:8px">
-        <div class="row">${kind === "tell" ? `<span class="chip c-green">Crew confirmed</span>` : `<span class="chip c-rose">Needs new dates</span>`}<span class="small muted">${esc(jobTitle(j))} · ${esc(c.area)}</span>${waitChip(j)}</div>
-        <h3>${kind === "tell" ? `Tell ${esc(c.name)} when volunteers are coming` : `Ask ${esc(c.name)} for new days`}</h3>
+        <div class="row">${kind === "tell" ? `<span class="chip c-green">Crew confirmed</span>` : kind === "drop" ? `<span class="chip c-amber">Volunteer dropped out</span>` : `<span class="chip c-rose">Needs new dates</span>`}<span class="small muted">${esc(jobTitle(j))} · ${esc(c.area)}</span>${waitChip(j)}</div>
+        <h3>${kind === "tell" ? `Tell ${esc(c.name)} when volunteers are coming` : kind === "drop" ? `Let ${esc(c.name)} know a volunteer can't come` : `Ask ${esc(c.name)} for new days`}</h3>
         <div class="phone">📞 ${esc(c.phone || c.email)}</div>
         ${kind === "tell" ? `<p><b>${names.map(esc).join(" and ")}</b> will come <b>${whenText(j, true)}</b> (about ${j.hours}h).</p>`
+          : kind === "drop" ? `<p>The visit is still set for <b>${whenText(j, true)}</b>. ${names.length ? `<b>${esc(names[0])}</b> is still coming; we're finding a second volunteer.` : "Both spots are open again on the job board."} If the time no longer works, use <b>Change time</b>.</p>`
           : `<p>None of their days got a full crew: ${j.windows.map((x) => fmtDate(x.date)).join(", ")}.${crew(j.id).length ? ` ${esc(names[0])} signed up alone and will be released.` : ""}</p>`}
         ${j.attempts ? `<p class="small muted">No answer ${j.attempts}× · last tried ${ago(j.lastAttemptAt)}</p>` : ""}
+        ${notesBlock(j)}
       </div>
       <div class="stack" style="gap:8px">
-        ${kind === "tell" ? `<button class="btn" data-act="called" data-id="${j.id}">Called ✓</button>` : `<button class="btn" data-act="resched" data-id="${j.id}">Enter new days</button>`}
+        ${kind === "dates" ? `<button class="btn" data-act="resched" data-id="${j.id}">Enter new days</button>` : `<button class="btn" data-act="called" data-id="${j.id}">Called ✓</button>`}
+        ${kind === "drop" ? `<button class="btn ghost" data-act="resched" data-id="${j.id}">Change time</button>` : ""}
         <button class="btn ghost" data-act="noAnswer" data-id="${j.id}">No answer</button>
       </div>
     </article>`; }).join("")}</div>`;
@@ -697,15 +799,15 @@ function reschedPanel(j) {
   const inp = `style="padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--surface)"`;
   return `<article class="card stack" id="resched-card" style="border-color:var(--accent)">
     <div class="row"><h3>Change time: ${esc(c.name)}</h3>${jChip(j)}</div>
-    ${full && isLocked(j) ? `<div class="stack" style="gap:8px">
+    ${(full || j.crewedAt) && isLocked(j) ? `<div class="stack" style="gap:8px">
       <span class="label">Option 1 · Move the time and keep the crew</span>
-      <p class="small muted">Use this only after both volunteers have agreed to the new time.</p>
+      <p class="small muted">Use this only after the volunteers on the job have agreed to the new time. They get a notification and an email; so does the client if they gave an email.</p>
       <div class="row"><input type="date" id="mv-date" value="${j.date}" aria-label="New date" ${inp}>
         <select id="mv-start" aria-label="New start time" ${inp}>${allTimes.map((t) => `<option value="${t}" ${t === j.start ? "selected" : ""}>${fmtTime(t)}</option>`).join("")}</select>
         <button class="btn" data-act="moveTime" data-id="${j.id}">Save new time</button></div>
     </div>` : ""}
     <div class="stack" style="gap:8px">
-      <span class="label">${full && isLocked(j) ? "Option 2 · " : ""}Release ${crew(j.id).length ? "the crew" : "it"} and repost with new days</span>
+      <span class="label">${(full || j.crewedAt) && isLocked(j) ? "Option 2 · " : ""}Release ${crew(j.id).length ? "the crew" : "it"} and repost with new days</span>
       <p class="small muted">Enter the days the client is free now. ${crew(j.id).length ? "Signed-up volunteers will be removed from the job." : ""}</p>
       ${windowRows("rw", liveWindows(j))}
       <div class="row"><button class="btn" data-act="repost" data-id="${j.id}">Repost to volunteers</button><button class="btn ghost" data-act="reschedCancel">Cancel</button></div>
@@ -719,11 +821,11 @@ function jobsTable() {
   return `<div class="filters">${[["upcoming", "Upcoming"], ["attention", "Needs volunteers"], ["past", "Done & cancelled"]].map(([k, n]) => `<button data-act="jobFilter" data-id="${k}" aria-pressed="${f === k}">${n}</button>`).join("")}</div>
   ${rows.length ? `<div class="card table-wrap"><table>
     <thead><tr><th>When</th><th>Job</th><th>Crew</th><th>Status</th><th></th></tr></thead>
-    <tbody>${rows.map((j) => { const c = client(j.clientId); const lw = liveWindows(j); return `<tr>
+    <tbody>${rows.map((j) => { const c = client(j.clientId); const lw = liveWindows(j); return `<tr id="row-${j.id}">
       <td style="white-space:nowrap">${j.status === "done" && j.date ? `<b>${fmtDate(j.date)}</b><div class="muted">${fmtTime(j.start)}</div>`
         : isLocked(j) ? `<b>${fmtDate(j.date)}</b><div class="muted">${fmtTime(j.start)} – ${fmtTime(endTime(j.start, j.hours))}</div><div class="muted">(~${j.hours}h)</div>`
         : lw.length ? `<b>${fmtDate(lw[0].date)}${lw.length > 1 ? ` –<br>${fmtDate(lw[lw.length - 1].date)}` : ""}</b><div class="muted">${lw.length} day option${lw.length === 1 ? "" : "s"}</div>` : `<b>No days left</b><div class="muted">Needs new dates</div>`}</td>
-      <td><b>${esc(jobTitle(j))}</b><div class="muted">${esc(c.name)} · ${esc(c.address)}, ${esc(c.area)}</div><div class="small muted">${lastHelped(j)}</div></td>
+      <td style="min-width:260px"><b>${esc(jobTitle(j))}</b><div class="muted">${esc(c.name)} · ${esc(c.address)}, ${esc(c.area)}</div><div class="small muted">${lastHelped(j)}</div>${reportsBlock(j)}${notesBlock(j)}</td>
       <td style="min-width:250px">${slots(j)}</td>
       <td><div class="stack" style="gap:6px;justify-items:start">${jChip(j)}${waitChip(j)}</div>${j.status === "done" ? `<div style="margin-top:10px"><select class="in" data-hours="${j.id}" aria-label="Hours worked" style="width:auto">${hourOptions(jobHours(j))}</select><div class="small muted">logged per volunteer</div></div>` : ""}</td>
       <td>${S.confirm === "done:" + j.id ? doneForm(j, "Save as done") : j.status === "scheduled" ? `<div class="acts">${isFull(j) ? `<button class="btn" data-act="done" data-id="${j.id}">Mark done</button>` : ""}<button class="btn ghost" data-act="resched" data-id="${j.id}">Change time</button><button class="btn ghost" data-act="edit" data-id="${j.id}">Edit</button><button class="btn danger" data-act="acancel" data-id="${j.id}">Cancel</button></div>` : ""}</td>
@@ -759,6 +861,14 @@ function settingsView() {
     <div class="field"><label class="lbl" for="new-admin">Add an admin</label>
       ${others.length ? `<div class="row" style="flex-wrap:nowrap"><select class="in" id="new-admin">${others.map((v) => `<option value="${v.id}">${esc(v.name)} · ${esc(v.email)}</option>`).join("")}</select><button class="btn" data-act="makeAdmin">Make admin</button></div>` : ""}
       <p class="small muted">The person signs up first through <b>Volunteer log in → Apply here</b>. Then pick them here. They'll see the admin dashboard next time they log in.</p></div>
+  </section>
+  <section class="card stack">
+    <h2>Email log</h2>
+    <p class="small muted">The last 40 emails the site sent (or tried to). Failed ones are retried automatically for 2 days.</p>
+    ${S.emails.length ? `<div class="table-wrap"><table><thead><tr><th>When</th><th>To</th><th>Subject</th><th>Status</th></tr></thead><tbody>${S.emails.map((m) => `<tr>
+      <td class="small" style="white-space:nowrap">${whenShort(m.created_at)}</td><td class="small">${esc(m.to_email)}</td><td class="small">${esc(m.subject)}</td>
+      <td>${m.status === "sent" ? `<span class="chip c-green">Sent</span>` : m.status === "failed" ? `<span class="chip c-rose" title="${esc(m.last_error || "")}">Failed</span><div class="small muted">${esc(m.last_error || "")}</div>` : `<span class="chip c-grey">Waiting</span>`}</td></tr>`).join("")}</tbody></table></div>`
+      : `<div class="empty">No emails yet.</div>`}
   </section>
   <section class="card stack">
     <h2>Site details</h2>
@@ -815,7 +925,8 @@ const A = {
     return `Published with ${liveWindows(job(id)).length} day options. Volunteers can now sign up.`;
   },
   reject: async (id) => { await upd("jobs", id, { status: "declined" }); await loadAdmin(); return "Request declined. Remember to call the client."; },
-  acancel: async (id) => { must(await sb.from("job_signups").delete().eq("job_id", id)); await upd("jobs", id, { status: "cancelled" }); await loadAdmin(); return "Job cancelled."; },
+  // Cancel first, then free the spots, so the crew gets a "cancelled" message rather than "taken off".
+  acancel: async (id) => { await upd("jobs", id, { status: "cancelled" }); must(await sb.from("job_signups").delete().eq("job_id", id)); await loadAdmin(); return "Job cancelled. The crew and client (if they gave an email) are told."; },
   called: async (id) => { await upd("jobs", id, { told_at: now() }); await loadAdmin(); return "Marked as called."; },
   noAnswer: async (id) => { await upd("jobs", id, { attempts: (job(id).attempts || 0) + 1, last_attempt_at: now() }); await loadAdmin(); return "Logged. It stays on the list so you can try again."; },
   resched: (id) => { S.resched = id; S.editing = null; setTimeout(() => $("#resched-card")?.scrollIntoView({ block: "start", behavior: "smooth" })); },
@@ -831,7 +942,7 @@ const A = {
     const wins = readWindows("rw").filter((x) => x.date > today());
     if (!wins.length) return toast("Add at least one future day."), SKIP;
     must(await sb.from("job_signups").delete().eq("job_id", id));
-    await upd("jobs", id, { windows: wins, date: null, start_time: null, told_at: null, time_changed_at: null, attempts: 0 });
+    await upd("jobs", id, { windows: wins, date: null, start_time: null, told_at: null, time_changed_at: null, attempts: 0, crewed_at: null, dropout_at: null });
     S.resched = null; await loadAdmin();
     return "Reposted with new days. Volunteers can sign up again.";
   },
@@ -866,7 +977,9 @@ const A = {
   },
   done: (id) => { S.confirm = "done:" + id; },
   doneYes: async (id) => {
-    const promoted = await rpc("finish_job", { p_job: id, p_hours: +$("#dh-" + id).value });
+    const concern = $("#dc-" + id).checked ? $("#dct-" + id).value : null, detail = $("#dcd-" + id).value.trim();
+    if (concern && !detail) return toast("Please describe the concern in a few words."), SKIP;
+    const promoted = await rpc("finish_job", { p_job: id, p_hours: +$("#dh-" + id).value, p_note: $("#dn-" + id).value.trim() || null, p_concern: concern, p_concern_detail: concern ? detail : null });
     S.confirm = null;
     await refresh();
     return promoted.length ? `Job done. ${promoted.join(" and ")} ${promoted.length > 1 ? "are" : "is"} now experienced!` : "Job marked as done.";
@@ -893,7 +1006,34 @@ const A = {
   },
   join: async (id) => { await rpc("join_job", { p_job: id }); await refresh(); return isFull(job(id)) ? "You're signed up. The crew is complete." : "You're signed up."; },
   leave: (id) => { S.confirm = "leave:" + id; },
-  leaveYes: async (id) => { await rpc("leave_job", { p_job: id }); S.confirm = null; await refresh(); return "You left the job. The spot is open again."; },
+  leaveYes: async (id) => {
+    await rpc("leave_job", { p_job: id, p_reason: $("#lr-" + id).value.trim() || null });
+    S.confirm = null; await refresh();
+    return "You're off this job. Thanks for letting us know.";
+  },
+  ics: (id) => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([icsText(job(id))], { type: "text/calendar" }));
+    a.download = "1yard-job.ics"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    return SKIP;
+  },
+  bell: async () => {
+    S.bellOpen = !S.bellOpen; drawBell();
+    if (S.bellOpen) { await loadNotifs(); drawBell(); }
+    return SKIP;
+  },
+  notifOpen: async (id) => {
+    const n = S.notifs.find((x) => x.id === id);
+    if (n && !n.read_at) { await rpc("mark_notifications_read", { p_ids: [id] }); n.read_at = now(); }
+    goTo(n?.link);
+  },
+  notifAllRead: async () => { await rpc("mark_notifications_read", { p_ids: null }); S.notifs.forEach((n) => (n.read_at = n.read_at || now())); drawBell(); return SKIP; },
+  addNote: async (id) => {
+    const body = $("#an-" + id).value.trim();
+    if (!body) return toast("Type a note first."), SKIP;
+    await rpc("add_admin_note", { p_job: id, p_body: body }); await loadAdmin();
+    return "Note added.";
+  },
 
   // --- client
   openRequest: async (tok) => { S.token = tok; S.justSent = false; history.replaceState(null, "", "?request=" + tok); S.view = "request"; await loadRequest(); },
@@ -945,6 +1085,7 @@ const A = {
 
 /* ============ EVENTS ============ */
 document.addEventListener("click", async (e) => {
+  if (S.bellOpen && !e.target.closest("#bell")) { S.bellOpen = false; drawBell(); }
   const b = e.target.closest("[data-act]");
   if (!b || b.disabled || S.busy) return;
   const fn = A[b.dataset.act]; if (!fn) return;
@@ -971,6 +1112,7 @@ document.addEventListener("change", async (e) => {
   if (id === "f-uni") { $("#f-uni-other").hidden = e.target.value !== "__other"; if (!$("#f-uni-other").hidden) $("#f-uni-other").focus(); return; }
   if (e.target.name === "year") { $("#f-year-other").hidden = !$("#yr-other").checked; return; }
   if (id === "sk-other") { $("#f-skill-other").hidden = !e.target.checked; return; }
+  if (e.target.dataset.concern) { $("#dcw-" + e.target.dataset.concern).hidden = !e.target.checked; if (e.target.checked) $("#dcd-" + e.target.dataset.concern).focus(); return; }
   if (e.target.dataset.hours) {
     const sel = e.target; sel.disabled = true;
     try { await upd("jobs", sel.dataset.hours, { actual_hours: +sel.value }); await loadAdmin(); render(); toast("Hours updated."); }
@@ -1016,6 +1158,7 @@ document.addEventListener("submit", async (e) => {
       await loadMe();
       if (!S.me) throw new Error("This account has no volunteer profile. Contact the 1Yard team.");
       await goHome();
+      if (S.go) { goTo(S.go); S.go = null; }
     } else if (form.id === "signup") {
       const typed = (id, what) => { const t = $("#" + id).value.trim(); if (!t) throw new Error(`Please type your ${what}.`); return t; };
       const uni = $("#f-uni").value === "__other" ? typed("f-uni-other", "university") : $("#f-uni").value;
@@ -1041,9 +1184,15 @@ document.addEventListener("submit", async (e) => {
   if (!sb) { S.view = "setup"; return render(); }
   render();
   try {
-    const tok = new URLSearchParams(location.search).get("request");
+    const params = new URLSearchParams(location.search), tok = params.get("request");
     if (tok) { S.token = tok; S.view = "request"; rememberToken(tok); await loadRequest(); }
-    else { await loadMe(); await goHome(); }
+    else {
+      // Links in emails look like ?go=job:<id>. Log in first if needed, then jump there.
+      S.go = params.get("go"); if (S.go) history.replaceState(null, "", location.pathname);
+      await loadMe(); await goHome();
+      if (S.go && S.me) { render(); goTo(S.go); S.go = null; }
+      else if (S.go) { S.view = "login"; S.notice = "Log in to see that job."; }
+    }
   } catch (err) {
     console.error(err);
     S.view = "home"; toast(err?.message || "Couldn't reach the server. Please try again.");

@@ -295,3 +295,34 @@ textarea { min-height: 96px; resize: vertical; }
 @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
 .job h3 { font-family: var(--display); font-weight: 400; font-size: 1.4rem; line-height: 1.2; }
 .job .chip { flex: none; }
+
+/* ---------- notification bell ---------- */
+.bell-wrap { position: relative; }
+.bellbtn { position: relative; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); display: grid; place-items: center; cursor: pointer; color: var(--forest); }
+.bellbtn:hover { background: var(--sage); }
+.bellbtn .dot { position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: var(--rose-fg); color: #fff; font-size: .72rem; font-weight: 700; display: grid; place-items: center; }
+.bellpanel { position: absolute; right: 0; top: 52px; width: min(380px, calc(100vw - 32px)); max-height: 70vh; overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 12px 40px rgba(31, 77, 43, .16); z-index: 50; }
+.bellhead { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); }
+.notif { display: grid; gap: 2px; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); border-left: 4px solid transparent; padding: 11px 14px; cursor: pointer; }
+.notif:hover { background: var(--sunk); }
+.notif.unread { background: var(--sage); }
+.notif.unread .msg { font-weight: 600; }
+.notif.urgent { border-left-color: var(--rose-fg); }
+.notif .urg { color: var(--rose-fg); font-weight: 700; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; }
+.notif .when { font-size: .78rem; color: var(--muted); }
+
+/* ---------- call notes, crew reports, calendar ---------- */
+.anotes { margin-top: 10px; display: grid; gap: 6px; }
+.anote { font-size: .88rem; background: var(--sunk); border-radius: 8px; padding: 6px 9px; }
+.anotes .in { padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); min-width: 0; flex: 1; }
+.report { margin-top: 8px; font-size: .88rem; background: var(--sky); border-radius: 8px; padding: 7px 10px; display: grid; gap: 2px; }
+.report.warn { background: var(--rose-bg); color: var(--rose-fg); }
+.calrow { gap: 8px; }
+.calrow .btn { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+.flash { animation: flash 2.4s ease-out; }
+tr.flash td { animation: flashbg 2.4s ease-out; }
+@keyframes flash { 0% { box-shadow: 0 0 0 4px var(--leaf); } 100% { box-shadow: var(--shadow); } }
+@keyframes flashbg { 0% { background: var(--sage-2); } 100% { background: transparent; } }
+@media (max-width: 720px) {
+  .bellpanel { position: fixed; left: 16px; right: 16px; top: 72px; width: auto; }
+}

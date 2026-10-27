@@ -52,6 +52,33 @@ Supabase's built-in email sender is for testing only. Admin approval already sto
 - `training` — real links to your training videos/docs
 - `waiverUrl` — put your blank waiver PDF in `docs/` as `waiver.pdf` (or link to it elsewhere)
 
+### 8. Turn on email (free, about 20 minutes)
+Bell notifications work as soon as `schema.sql` is run. Emails are queued in the database from then on, and go out once these steps are done. Until then they wait in **Settings → Email log**; anything older than 2 days is never sent, so nobody gets stale emails.
+
+1. **Resend account:** sign up free at resend.com (3,000 emails a month, 100 a day).
+2. **Add the domain:** Resend → **Domains → Add domain** → `1yard.ca`. Resend shows 3–4 DNS records. Add each one, exactly as shown, wherever 1yard.ca's DNS is managed (the company you bought the domain from, or Cloudflare):
+   - **MX** record on `send` (pointing to an `amazonses.com` address, priority 10)
+   - **TXT** record on `send`: `v=spf1 include:amazonses.com ~all`
+   - **TXT** record on `resend._domainkey`: a long key starting `p=` (copy it from Resend)
+   - Recommended: **TXT** on `_dmarc`: `v=DMARC1; p=none;`
+
+   These sit on the `send.` subdomain and a DKIM name, so they don't touch any email you already get at 1yard.ca. Click **Verify** in Resend; it usually takes minutes, sometimes a few hours.
+3. **API key:** Resend → **API Keys → Create** (Sending access, domain 1yard.ca). Copy it. Never put it in the website's code.
+4. **Deploy the sender:** Supabase → **Edge Functions → Deploy a new function → Via editor**. Name it `send-emails`, paste in `supabase/functions/send-emails/index.ts`, and deploy. Then open the function's **Details** and turn **off** "Verify JWT" (the database calls it without a login; it only sends what's already queued).
+5. **Secrets:** Supabase → **Edge Functions → Secrets**, add:
+   - `RESEND_API_KEY` = the key from step 3
+   - `EMAIL_FROM` = `1Yard <hello@1yard.ca>`
+   - `EMAIL_REPLY_TO` = `1yardqueens@gmail.com`
+6. **Hook it up:** Supabase → **SQL Editor**, run `supabase/email.sql`. This sends queued emails right away, retries failures every 5 minutes, and runs the hourly task (day-before reminders at 6pm, "needs new dates" alerts).
+7. **Test:** approve a test volunteer, then check **Settings → Email log**. It should say **Sent** within a minute. **Failed** shows the reason.
+
+### What sends what
+- **Bell** (volunteers): crew confirmed, time changed, job cancelled, taken off a job, partner dropped out, hours corrected, promoted, application approved.
+- **Bell** (admins): new request, new application, crew set (call the client), needs new dates, volunteer dropped out (marked urgent within 24 hours), a job tomorrow still missing a volunteer, concern reported.
+- **Email** (volunteers): crew confirmed (with calendar file), time changed, cancelled, taken off a job, partner dropped out, day-before reminder, application approved.
+- **Email** (clients, only if they gave an email): crew confirmed, day-before reminder, time changed, cancelled by 1Yard. Never volunteers' contact details.
+- **Email** (admins): only concerns from an hours log.
+
 ---
 
 ## Day to day
