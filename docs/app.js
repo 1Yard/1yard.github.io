@@ -249,6 +249,9 @@ function lastHelped(j) {
   const prev = S.jobs.filter((x) => x.clientId === j.clientId && x.id !== j.id && x.status === "done" && x.date).sort((a, b) => b.date.localeCompare(a.date))[0];
   return prev ? `Last helped ${fmtDate(prev.date)} (${daysSince(prev.date + "T12:00")} days ago)` : "First time asking for help";
 }
+// Volunteers can mark a job done once its start time has passed (admins any time).
+const startsAt = (j) => new Date(`${j.date}T${j.start.padStart(5, "0")}`);
+const hasStarted = (j) => j.date && j.start && startsAt(j) <= new Date();
 const jobHours = (j) => +(j.actualHours ?? j.hours);
 const hoursFor = (vid) => S.signups.filter((s) => s.vid === vid && job(s.jobId)?.status === "done").reduce((t, s) => t + jobHours(job(s.jobId)), 0);
 const fmtHours = (h) => (Math.round(h * 10) / 10).toString().replace(/\.0$/, "");
@@ -450,21 +453,21 @@ function volunteerView() {
 function trainingView() {
   return `<section class="card stack">
     <div><h2>You're approved. Finish online training to start.</h2>
-    <p class="muted">Go through the modules, sign the waiver, then upload it here.</p></div>
-    <div class="label">Training modules</div>
+    <p class="muted">Read the training guides, sign the waiver, then upload it here.</p></div>
+    <div class="label">Training guides</div>
     <div class="list">${TRAINING.map((m, i) => `<div class="module"><div class="ico">${i + 1}</div>
       <div><b>${esc(m.title)}</b><div class="muted small">${esc(m.detail)}</div></div>
       <a class="btn ghost" href="${esc(m.url)}" target="_blank" rel="noopener">Open</a></div>`).join("")}</div>
     <div class="label">Volunteer waiver</div>
     <div class="module"><div class="ico">PDF</div><div><b>1Yard Volunteer Waiver</b><div class="muted small">Download, sign, and upload the signed copy.</div></div>
-      <a class="btn ghost" href="${esc(CFG.waiverUrl || "#")}" target="_blank" rel="noopener">Open PDF</a></div>
+      <a class="btn ghost" href="${esc(CFG.waiverUrl || "#")}" target="_blank" rel="noopener">Download PDF</a></div>
     <div class="drop">
       <label class="lbl" for="waiver-file">Upload your signed waiver <span class="muted small">(PDF, up to 5 MB)</span></label>
       <input type="file" id="waiver-file" accept="application/pdf,.pdf">
       <span class="small muted" id="file-note">No file chosen yet.</span>
     </div>
-    <label class="check" style="max-width:420px"><input type="checkbox" id="done-training"> I have done the training</label>
-    <div class="row"><button class="btn" data-act="finish" id="finish" disabled>Finish training</button><span class="small muted" id="finish-hint">Tick the box and upload your waiver to continue.</span></div>
+    <label class="check" style="max-width:480px"><input type="checkbox" id="done-training"> I have read and understood the 1Yard Volunteer Training Guide</label>
+    <div class="row"><button class="btn" data-act="finish" id="finish" disabled>Finish training</button><span class="small muted" id="finish-hint">Upload your waiver and tick the box to continue.</span></div>
     <div class="note small">Next: you'll be a <b>trainee</b>. You need ${SHADOW_SHIFTS_NEEDED} jobs alongside an experienced volunteer before you're fully trained.</div>
   </section>`;
 }
@@ -553,6 +556,7 @@ function myJobCard(j, v) {
   if (confirming) foot = `<div class="confirm"><b>Leave this job?</b>${partner && !c.find((s) => s.vid === v.id).asTrainee && partner.asTrainee ? " Your trainee partner will need a new experienced volunteer." : ""}${!partner ? " The client's days will open up again for others." : ""}<div class="row"><button class="btn danger" data-act="leaveYes" data-id="${j.id}">Yes, leave</button><button class="btn ghost" data-act="confirmNo">Keep it</button></div></div>`;
   else if (S.picking === j.id) foot = picker(j, j.date + "|" + j.start, "Save new time");
   else if (S.confirm === "done:" + j.id) foot = doneForm(j, "Mark as done");
+  else if (full && !hasStarted(j)) foot = `<div class="foot"><span class="stack" style="gap:2px"><button class="btn" disabled>We finished this job</button><span class="small muted">You can mark this job complete after ${fmtDate(j.date)}, ${fmtTime(j.start)}.</span></span><button class="btn danger" data-act="leave" data-id="${j.id}">Leave job</button></div>`;
   else foot = `<div class="foot">${full ? `<button class="btn" data-act="done" data-id="${j.id}">We finished this job</button>` : `<button class="btn ghost" data-act="pickOpen" data-id="${j.id}">Change time</button>`}<button class="btn danger" data-act="leave" data-id="${j.id}">Leave job</button></div>`;
   return `<article class="card job">
     ${jobTop(j)}
@@ -769,6 +773,8 @@ const SKIP = Symbol();
 function friendly(err, fallback) {
   const m = err?.message || "";
   if (/permission denied|JWT|not authenticated/i.test(m)) { setTimeout(checkLogin); return "You're no longer logged in here. Please log in again."; }
+  // The site was updated but the database setup (supabase/schema.sql) wasn't re-run yet.
+  if (/PGRST202|Could not find the function/i.test(m + (err?.code || ""))) return "The website was just updated and the database needs a quick update too. Please tell a 1Yard admin.";
   return m || fallback;
 }
 const upd = async (table, id, patch) => must(await sb.from(table).update(patch).eq("id", id));
@@ -872,7 +878,7 @@ const A = {
     if (f.size > 5 * 1024 * 1024) return "That file is over 5 MB. Try a smaller scan.";
     const path = `${S.me.id}/${Date.now()}-waiver.pdf`;
     must(await sb.storage.from("waivers").upload(path, f, { contentType: "application/pdf" }));
-    await rpc("complete_training", { p_path: path });
+    await rpc("complete_training", { p_path: path, p_read_guide: $("#done-training").checked });
     S.boardFilter = "all"; await refresh(); scrollTo(0, 0);
     return "Training complete. You can now sign up for jobs as a trainee.";
   },
@@ -996,7 +1002,7 @@ document.addEventListener("change", async (e) => {
     $("#file-note").textContent = !f ? "No file chosen yet." : isPdf ? `📄 ${f.name}` : "That file isn't a PDF. Upload the signed waiver as a PDF.";
     const ok = isPdf && $("#done-training").checked;
     $("#finish").disabled = !ok;
-    $("#finish-hint").textContent = ok ? "Ready to go." : "Tick the box and upload your waiver to continue.";
+    $("#finish-hint").textContent = ok ? "Ready to go." : "Upload your waiver and tick the box to continue.";
   }
 });
 document.addEventListener("submit", async (e) => {

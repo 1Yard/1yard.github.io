@@ -322,6 +322,11 @@ begin
     raise exception 'Only the crew or an admin can finish this job';
   end if;
   if (select count(*) from job_signups where job_id = p_job) < 2 then raise exception 'The job needs a full crew first'; end if;
+  -- Volunteers can only mark it done once the scheduled start time has passed (Kingston time). Admins any time.
+  if not is_admin() and exists (select 1 from jobs where id = p_job
+       and (date + start_time::time) > (now() at time zone 'America/Toronto')) then
+    raise exception 'You can mark this job complete after it starts';
+  end if;
   update jobs set status = 'done', done_at = now(), actual_hours = coalesce(p_hours, hours) where id = p_job and status = 'scheduled';
   if not found then raise exception 'This job is not open'; end if;
   with up as (
@@ -334,10 +339,12 @@ begin
   return promoted;
 end $$;
 
--- Approved volunteer has done the training and uploaded the signed waiver.
-create or replace function public.complete_training(p_path text) returns void
+-- Approved volunteer has read the training guide and uploaded the signed waiver.
+drop function if exists public.complete_training(text);
+create or replace function public.complete_training(p_path text, p_read_guide boolean default false) returns void
 language plpgsql security definer set search_path = public as $$
 begin
+  if not coalesce(p_read_guide, false) then raise exception 'Please confirm you have read the training guide'; end if;
   if p_path is null or p_path not like auth.uid()::text || '/%' then raise exception 'Upload your waiver first'; end if;
   update profiles set status = 'trainee', trained_at = now(), waiver_path = p_path
   where id = auth.uid() and status = 'approved';
@@ -461,7 +468,11 @@ grant execute on function public.submit_request(jsonb), public.get_request(uuid)
   public.cancel_request(uuid), public.ping() to anon, authenticated;
 grant execute on function public.volunteer_board(), public.join_job(uuid, date, text),
   public.change_my_time(uuid, date, text), public.leave_job(uuid), public.finish_job(uuid, numeric),
-  public.complete_training(text), public.admin_remove_volunteer(uuid) to authenticated;
+  public.complete_training(text, boolean), public.admin_remove_volunteer(uuid) to authenticated;
+-- Postgres lets everyone run new functions by default; logged-out visitors don't need these.
+revoke execute on function public.volunteer_board(), public.join_job(uuid, date, text),
+  public.change_my_time(uuid, date, text), public.leave_job(uuid), public.finish_job(uuid, numeric),
+  public.complete_training(text, boolean), public.admin_remove_volunteer(uuid) from public, anon;
 
 -- Internal helpers shouldn't be callable from the website.
 revoke execute on function public.handle_new_user() from public, anon, authenticated;

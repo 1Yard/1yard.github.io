@@ -7,13 +7,11 @@ window.ONEYARD_CONFIG = {
 
   officePhone: "416-431-0010",   // shown to clients
 
-  // Training shown to approved volunteers. Swap in real links (YouTube, Google Drive, etc.).
+  // Training shown to approved volunteers (Google Docs, shared as "anyone with the link can view").
   training: [
-    { title: "Welcome to 1Yard", detail: "Video · 10 min", url: "https://example.com/1yard/training/welcome" },
-    { title: "Safety outdoors: tools, lifting, weather", detail: "Reading · 10 min", url: "https://example.com/1yard/training/safety" },
-    { title: "Working with clients", detail: "Video · 12 min", url: "https://example.com/1yard/training/clients" },
-    { title: "Fall services how-to", detail: "Video · 8 min", url: "https://example.com/1yard/training/fall" },
+    { title: "1Yard Volunteer Training Guide", detail: "Reading · who we help, safety, how we work", url: "https://docs.google.com/document/d/1-PiXDLIz6gtsuk2sfu-0NeOiwQbfiVJLLkLSxutZjYU/edit?usp=sharing" },
+    { title: "1Yard Volunteer Guide: How a Job Works", detail: "Reading · 15 min · the website, step by step", url: "https://docs.google.com/document/d/1VZrind-ymBFs_WDUi9x-KzeMlm5g_DTjVSRE_FHIUio/edit?usp=sharing" },
   ],
-  // Put the blank waiver PDF in the docs/ folder as waiver.pdf, or paste a link to it here.
-  waiverUrl: "waiver.pdf",
+  // Volunteer waiver. This link downloads the Google Doc as a PDF.
+  waiverUrl: "https://docs.google.com/document/d/1xgABuq3XIzky6raWa2_RcJKEglkLsQjTCNl8ZlKfXPo/export?format=pdf",
 };

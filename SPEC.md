@@ -14,7 +14,7 @@ Service area: **Kingston, ON** (team based at Queen's). This doc is the contract
 ## Volunteer lifecycle
 
 ```
-pending ──admin approves──▶ approved ──training ✓ + waiver PDF──▶ trainee ──2 shadow shifts──▶ experienced
+pending ──admin approves──▶ approved ──"read the guide" ✓ + waiver PDF──▶ trainee ──2 shadow shifts──▶ experienced
    └──admin declines──▶ declined
 ```
 
@@ -94,7 +94,7 @@ job_signups   id, job_id, volunteer_id, as_trainee bool, created_at   -- unique(
 1. Crew full → client's page shows names + exact time; job appears on the admin's **Calls to make** list.
 2. Admin calls the client and clicks **Called ✓**.
 3. Job day: the two volunteers meet at the address (they have each other's phone/email).
-4. Afterwards **either volunteer** clicks **We finished this job** (or an admin clicks **Mark done**) and picks how many hours it took.
+4. Once the scheduled start time has passed, **either volunteer** clicks **We finished this job** (the button is greyed out before then; admins can mark done any time) (or an admin clicks **Mark done**) and picks how many hours it took.
 5. Job becomes **done**: client's page says "All done", the hours count for **both** volunteers, trainees get a shadow shift (auto-promoted at 2).
 6. Volunteers see their total + per-job log under **My hours** (useful for school service hours). Admins see each volunteer's total in **Volunteers** and can correct a job's hours under **Jobs → Done & cancelled**.
 
