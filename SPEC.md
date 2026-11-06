@@ -108,3 +108,5 @@ job_signups   id, job_id, volunteer_id, as_trainee bool, created_at   -- unique(
 - **Add to calendar**: crew-only, on the job card (Google link + .ics) and in the crew-confirmed email.
 - **Hours log**: optional note + optional concern (safety/injury, client not home, bigger than described, other) in `job_reports`, admins only. A concern sends an urgent bell + email to admins.
 - **Call notes**: `admin_notes` (author, time, text), admins only; on the request, To call card and Jobs table.
+- **Passwords**: admins set a temporary password from the Volunteers table (`admin_set_password`, stored hashed); the person sees a banner until they pick their own under Account (`updateUser` + `password_changed`).
+- **Client days**: 2–4 days with at least one in each week (form + `submit_request`). Tips nudge toward a weekend day and "Either". Admin edits aren't limited.

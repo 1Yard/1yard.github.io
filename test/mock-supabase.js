@@ -6,7 +6,10 @@ import { PGlite } from "https://cdn.jsdelivr.net/npm/@electric-sql/pglite@0.2.17
 const STUBS = `
 create role anon; create role authenticated;
 create schema auth;
-create table auth.users (id uuid primary key default gen_random_uuid(), email text unique, raw_user_meta_data jsonb, password text);
+create table auth.users (id uuid primary key default gen_random_uuid(), email text unique, raw_user_meta_data jsonb, password text, encrypted_password text, updated_at timestamptz);
+create schema extensions;
+create function extensions.gen_salt(text) returns text language sql as $$ select 'salt' $$;
+create function extensions.crypt(pw text, salt text) returns text language sql as $$ select pw $$;
 create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('test.uid', true), '')::uuid $$;
 create schema storage;
 create table storage.buckets (id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
@@ -85,10 +88,15 @@ window.supabase = {
       auth: {
         async getSession() { return { data: { session } }; },
         onAuthStateChange(cb) { authListeners.push(cb); return { data: { subscription: { unsubscribe() {} } } }; },
+        async updateUser({ password }) {
+          const db = await ready;
+          await db.query(`update auth.users set encrypted_password = $1 where id = $2`, [password, session.user.id]);
+          return { data: { user: session.user }, error: null };
+        },
         async signOut() { setSession(null); emit("SIGNED_OUT"); return { error: null }; },
         async signInWithPassword({ email, password }) {
           const db = await ready;
-          const u = (await db.query(`select id, email from auth.users where email = $1 and password = $2`, [email, password])).rows[0];
+          const u = (await db.query(`select id, email from auth.users where email = $1 and coalesce(encrypted_password, password) = $2`, [email, password])).rows[0];
           if (!u) return { data: null, error: { message: "Invalid login credentials" } };
           setSession({ user: u }); emit("SIGNED_IN"); return { data: { session }, error: null };
         },

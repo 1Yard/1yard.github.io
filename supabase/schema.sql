@@ -73,6 +73,8 @@ alter table public.jobs add column if not exists actual_hours numeric(4,1);
 -- First time the crew reached 2 (the client is told this time, so it stays locked
 -- even if a volunteer drops out), and the last drop-out after that.
 alter table public.jobs add column if not exists crewed_at timestamptz;
+-- True after an admin set a temporary password, until the person picks their own.
+alter table public.profiles add column if not exists temp_password boolean not null default false;
 alter table public.jobs add column if not exists dropout_at timestamptz;
 
 create unique index if not exists one_open_request_per_client
@@ -690,6 +692,11 @@ begin
   if length(v_key) < 10 and v_email = '' then raise exception 'Please give us a phone number or an email'; end if;
   if jsonb_array_length(coalesce(p->'services', '[]')) = 0 then raise exception 'Please pick what you need help with'; end if;
   if jsonb_array_length(wins) not between 2 and 4 then raise exception 'Please pick 2 to 4 days'; end if;
+  -- At least one day in each of the two weeks, so volunteers have real options.
+  if not exists (select 1 from jsonb_array_elements(wins) x where (x->>'date')::date <= local_today() + 7)
+     or not exists (select 1 from jsonb_array_elements(wins) x where (x->>'date')::date > local_today() + 7) then
+    raise exception 'Please pick at least one day from each week';
+  end if;
   if exists (select 1 from jsonb_array_elements(wins) x
              where (x->>'date')::date <= local_today() or (x->>'date')::date > local_today() + 21
                 or coalesce(x->>'part', '') not in ('am', 'pm', 'any')) then
@@ -1002,6 +1009,26 @@ end $$;
 -- Used by the weekly keep-awake GitHub Action.
 create or replace function public.ping() returns int language sql stable as $$ select 1 $$;
 
+-- ---------- Passwords -------------------------------------------------
+-- An admin sets a temporary password for someone who forgot theirs, then texts it
+-- to them. Nobody (admins included) can ever see an existing password.
+create or replace function public.admin_set_password(vid uuid, pw text) returns void
+language plpgsql security definer set search_path = public, extensions as $$
+begin
+  if not is_admin() then raise exception 'Admins only'; end if;
+  if vid = auth.uid() then raise exception 'Use Change password for your own account'; end if;
+  if length(coalesce(pw, '')) < 8 then raise exception 'The password needs at least 8 characters'; end if;
+  update auth.users set encrypted_password = extensions.crypt(pw, extensions.gen_salt('bf')), updated_at = now() where id = vid;
+  if not found then raise exception 'That account doesn''t exist anymore'; end if;
+  update profiles set temp_password = true where id = vid;
+  perform notify(vid, 'password_reset', null, 'An admin reset your password. Choose your own under Account.', 'vaccount', false, null);
+end $$;
+
+-- Called by the website after someone picks their own password.
+create or replace function public.password_changed() returns void
+language sql security definer set search_path = public as $$
+  update profiles set temp_password = false where id = auth.uid() $$;
+
 -- ---------- Explicit access grants ----------------------------------
 -- Works whether or not "Automatically expose new tables" is on. RLS above
 -- still decides which rows anyone can see.
@@ -1020,12 +1047,14 @@ grant execute on function public.submit_request(jsonb), public.get_request(uuid)
 grant execute on function public.volunteer_board(), public.join_job(uuid, date, text),
   public.change_my_time(uuid, date, text), public.leave_job(uuid, text), public.finish_job(uuid, numeric, text, text, text),
   public.complete_training(text, boolean), public.admin_remove_volunteer(uuid),
-  public.mark_notifications_read(uuid[]), public.add_admin_note(uuid, text) to authenticated;
+  public.mark_notifications_read(uuid[]), public.add_admin_note(uuid, text),
+  public.admin_set_password(uuid, text), public.password_changed() to authenticated;
 -- Postgres lets everyone run new functions by default; logged-out visitors don't need these.
 revoke execute on function public.volunteer_board(), public.join_job(uuid, date, text),
   public.change_my_time(uuid, date, text), public.leave_job(uuid, text), public.finish_job(uuid, numeric, text, text, text),
   public.complete_training(text, boolean), public.admin_remove_volunteer(uuid),
-  public.mark_notifications_read(uuid[]), public.add_admin_note(uuid, text) from public, anon;
+  public.mark_notifications_read(uuid[]), public.add_admin_note(uuid, text),
+  public.admin_set_password(uuid, text), public.password_changed() from public, anon;
 
 -- Internal helpers shouldn't be callable from the website.
 revoke execute on function public.handle_new_user(), public.trg_profile_new(), public.trg_profile_status(),

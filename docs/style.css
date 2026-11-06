@@ -326,3 +326,4 @@ tr.flash td { animation: flashbg 2.4s ease-out; }
 @media (max-width: 720px) {
   .bellpanel { position: fixed; left: 16px; right: 16px; top: 72px; width: auto; }
 }
+.pwshow { font-size: 1.15rem; font-weight: 700; background: var(--surface); border-radius: 8px; padding: 6px 10px; justify-self: start; user-select: all; }

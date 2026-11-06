@@ -84,7 +84,7 @@ Bell notifications work as soon as `schema.sql` is run. Emails are queued in the
 ## Day to day
 
 - **Admins** log in on the site. Everything is on the dashboard: To call, New requests, Volunteer applications, Jobs, Volunteers.
-- **Volunteer forgot their password?** Until email is set up: Supabase → **Authentication → Users** → find them → delete the user, and ask them to apply again (an admin re-approves). Setting up free SMTP (e.g. a 1Yard Gmail account) fixes this properly.
+- **Volunteer forgot their password?** Admin → **Volunteers** → **Reset password** next to their name. Text them the temporary password shown; when they log in they're asked to choose their own under **Account**. (Nobody can see an existing password. They're stored scrambled.) An admin who forgets theirs: another admin can run the SQL in `supabase/schema.sql` → `admin_set_password`, or ask in Supabase → Authentication → Users.
 - **Keep-awake:** `.github/workflows/keep-awake.yml` pings Supabase twice a week so the free project doesn't pause. GitHub turns scheduled jobs off after 60 days with no commits; if that happens, re-enable it from the repo's **Actions** tab.
 
 ## Updating the site

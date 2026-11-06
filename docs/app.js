@@ -131,7 +131,7 @@ const myTokens = () => { try { return JSON.parse(localStorage.getItem(TOKENS_KEY
 const rememberToken = (t) => { try { localStorage.setItem(TOKENS_KEY, JSON.stringify([t, ...myTokens().filter((x) => x !== t)].slice(0, 5))); } catch {} };
 
 /* ============ DATA (Supabase) ============ */
-const mapProfile = (p) => ({ id: p.id, role: p.role, name: p.name, email: p.email, phone: p.phone, uni: p.university, year: p.year, skills: p.skills || [], avail: p.availability || [], why: p.why, status: p.status, appliedAt: p.applied_at, reviewedAt: p.reviewed_at, trainedAt: p.trained_at, promotedAt: p.promoted_at, waiverPath: p.waiver_path });
+const mapProfile = (p) => ({ id: p.id, role: p.role, name: p.name, email: p.email, phone: p.phone, uni: p.university, year: p.year, skills: p.skills || [], avail: p.availability || [], why: p.why, status: p.status, appliedAt: p.applied_at, reviewedAt: p.reviewed_at, trainedAt: p.trained_at, promotedAt: p.promoted_at, waiverPath: p.waiver_path, tempPassword: !!p.temp_password });
 const mapClient = (c) => ({ id: c.id, name: c.name, phone: c.phone, email: c.email, contact: c.contact, address: c.address, postal: c.postal, area: c.area });
 const mapJob = (j) => ({ id: j.id, clientId: j.client_id, services: j.services, tools: j.tools || {}, flags: j.flags || [], notes: j.notes || "", windows: j.windows || [], status: j.status, date: j.date, start: j.start_time, hours: j.hours, createdAt: j.created_at, toldAt: j.told_at, attempts: j.attempts, lastAttemptAt: j.last_attempt_at, timeChangedAt: j.time_changed_at, publishedAt: j.published_at, doneAt: j.done_at, editedAt: j.edited_at, actualHours: j.actual_hours, crewedAt: j.crewed_at, dropoutAt: j.dropout_at });
 const mapSignup = (s) => ({ id: s.id, jobId: s.job_id, vid: s.volunteer_id, asTrainee: s.as_trainee, at: s.created_at });
@@ -217,7 +217,9 @@ const ART = `<svg viewBox="0 0 260 300" aria-hidden="true">
 /* ============ RENDER ============ */
 function render() {
   const views = { loading: () => `<div class="loading">Loading…</div>`, setup: setupView, home: homeView, wizard: wizardView, request: requestView, login: loginView, signup: signupView, volunteer: volunteerView, admin: adminView };
-  const body = (S.notice ? `<div class="note">${S.notice}</div>` : "") + (views[S.view] || homeView)();
+  const tempPw = S.me?.tempPassword && (S.view === "admin" || S.view === "volunteer") && S.volPage !== "vaccount" && S.adminPage !== "settings"
+    ? `<div class="note">You're using a temporary password from an admin. <button class="linkbtn" data-act="${S.view === "admin" ? "adminNav" : "volNav"}" data-id="${S.view === "admin" ? "settings" : "vaccount"}">Choose your own password</button></div>` : "";
+  const body = (S.notice ? `<div class="note">${S.notice}</div>` : "") + tempPw + (views[S.view] || homeView)();
   const banner = S.bannerHidden ? "" : `<div class="seasonbar">${ic("leaf")}<span>${SEASON.label} · <b>Kingston · Outdoor work only</b></span><button class="x" data-act="hideBanner" aria-label="Hide this message">${ic("x")}</button></div>`;
   const foot = `<p class="foot-note">1Yard · volunteer yard help in Kingston, ON${OFFICE_PHONE ? ` · ${esc(OFFICE_PHONE)}` : ""}</p>`;
   const logo = `<button class="logo" data-act="go" data-id="home" aria-label="1Yard home">${LOGO}1Yard</button>`;
@@ -262,7 +264,8 @@ function goTo(link) {
     S.flash = kind === "job" && job(id) ? "job-" + id : null;
   } else if (S.view === "admin") {
     S.adminPage = "dash"; S.editing = null; S.resched = null;
-    if (["calls", "reqs", "apps"].includes(kind)) { S.adminTab = kind; S.flash = "admin-tabs"; }
+    if (kind === "vaccount") S.adminPage = "settings";
+    else if (["calls", "reqs", "apps"].includes(kind)) { S.adminTab = kind; S.flash = "admin-tabs"; }
     else if (kind === "jobs") {
       const j = job(id); S.adminTab = "jobs";
       if (j) S.jobFilter = j.status === "scheduled" ? "upcoming" : "past";
@@ -287,8 +290,9 @@ function sideNav() {
       navItem("apps", "Volunteer applications", "userplus", false, n.apps) + navItem("jobs", "Jobs", "cal") + navItem("vols", "Volunteers", "users");
   }
   const trained = canSeeBoard(S.me);
-  return navItem("vhome", trained ? "My jobs" : "My application", "home", S.volPage === "vhome" || !trained) +
-    (trained ? navItem("vboard", "Open jobs", "search", S.volPage === "vboard") + navItem("vhours", "My hours", "clock", S.volPage === "vhours") : "");
+  return navItem("vhome", trained ? "My jobs" : "My application", "home", S.volPage === "vhome" || (!trained && S.volPage !== "vaccount")) +
+    (trained ? navItem("vboard", "Open jobs", "search", S.volPage === "vboard") + navItem("vhours", "My hours", "clock", S.volPage === "vhours") : "") +
+    navItem("vaccount", "Account", "gear", S.volPage === "vaccount");
 }
 const endTime = (start, hours) => { const m = to_min(start) + Math.round(hours * 60); return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`; };
 const to_min = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
@@ -415,11 +419,13 @@ function wizardView() {
         ${x ? `<div class="parts">${Object.entries(PARTS).map(([k2, p]) => `<button type="button" data-act="winPart" data-id="${date}|${k2}" aria-pressed="${x.part === k2}">${p.name}<small>${p.range}</small></button>`).join("")}</div>` : ""}</div>`; };
     const wk1 = picked.some((p) => p.date <= day(7)), wk2 = picked.some((p) => p.date > day(7));
     q = `<h1>Which days are good for you?</h1>
-    <p>Tap <b>${MIN_DAYS} to ${MAX_DAYS} days</b>. Try to pick one from each week. Then tap morning, afternoon, or either.</p>
+    <p>Tap <b>${MIN_DAYS} to ${MAX_DAYS} days</b>, with <b>at least one from each week</b>. Then tap morning, afternoon, or either.</p>
     <p class="lbl">${picked.length} of ${MAX_DAYS} days picked${picked.length >= MIN_DAYS ? " ✓" : ""}</p>
     <h2>In the next 7 days</h2><div class="days">${[1, 2, 3, 4, 5, 6, 7].map(dayCard).join("")}</div>
     <h2>The week after</h2><div class="days">${[8, 9, 10, 11, 12, 13, 14].map(dayCard).join("")}</div>
-    ${picked.length && !(wk1 && wk2) ? `<p class="note">Tip: picking a day from each week helps us find volunteers faster.</p>` : ""}
+    ${picked.length && !(wk1 && wk2) ? `<p class="note">Please also pick a day from ${wk1 ? "the week after" : "the next 7 days"}. Spreading your days out gives more volunteers a chance to help.</p>` : ""}
+    ${picked.length && !picked.some((p) => [0, 6].includes(new Date(p.date + "T12:00").getDay())) ? `<p class="note">Tip: picking a Saturday or Sunday helps. That's when most of our student volunteers are free.</p>` : ""}
+    ${picked.some((p) => p.part !== "any") ? `<p class="note">Tip: <b>Either</b> (9am–6pm) gives more volunteers a chance than morning or afternoon only.</p>` : ""}
     <p class="muted">Two volunteers will pick a start time on one of these days. We'll tell you the exact time.</p>`;
   }
   else if (step === "tools") { const tl = neededTools(d.services); q = `<h1>Do you have these tools?</h1>
@@ -463,6 +469,7 @@ function wizError() {
   if (step === "services" && !d.services.length) return "Please tap at least one thing you need help with.";
   if (step === "where" && !d.address.trim()) return "Please type your street address.";
   if (step === "when" && d.windows.length < MIN_DAYS) return `Please tap at least ${MIN_DAYS} days.`;
+  if (step === "when" && !(d.windows.some((p) => p.date <= day(7)) && d.windows.some((p) => p.date > day(7)))) return "Please pick at least one day from each week.";
   if (step === "tools" && neededTools(d.services).some((t) => d.tools[t] === undefined)) return "Please tap Yes or No for each tool.";
   if (step === "you" && !d.name.trim()) return "Please type your name.";
   if (step === "you" && d.phone.replace(/\D/g, "").length < 10 && !d.email.trim()) return "Please give us a phone number (with area code) or an email.";
@@ -510,7 +517,18 @@ function signupView() {
 }
 
 /* ---------------- VOLUNTEER ---------------- */
+// Change your own password (everyone who logs in).
+const passwordCard = () => `<section class="card stack" style="max-width:560px">
+  <h2>Change your password</h2>
+  ${S.me.tempPassword ? `<p class="small">You're using a temporary password an admin gave you. Pick one only you know.</p>` : `<p class="small muted">Forgot it? An admin can set a temporary one for you.</p>`}
+  <form id="pw-form" class="stack">
+    ${pwField("pw-new", "New password", "new-password", 'minlength="8" placeholder="At least 8 characters"')}
+    ${pwField("pw-new2", "Type it again", "new-password", 'minlength="8"')}
+    <div><button class="btn" type="submit">Save new password</button></div>
+  </form></section>`;
+const accountView = () => `<div class="head"><div><h1>Account</h1><p>${esc(S.me.name)} · ${esc(S.me.email)}</p></div></div>` + passwordCard();
 function volunteerView() {
+  if (S.volPage === "vaccount") return accountView();
   const v = S.me, sc = S.myShadow;
   const [doneCount, nowStep] = { pending: [1, 1], declined: [1, -1], approved: [2, 2], trainee: [3, 3], experienced: [5, -1] }[v.status];
   const steps = [["Apply", "Send your application"], ["Approval", "An admin reviews it"], ["Online training", "Modules and waiver"],
@@ -844,9 +862,16 @@ function volsTable(people) {
       <td class="num">${jobsDone(v.id)}</td>
       <td class="num"><b>${fmtHours(hoursFor(v.id))}</b></td>
       <td class="small">${v.waiverPath ? `<button class="btn ghost" data-act="waiver" data-id="${v.id}">📄 Open waiver</button>` : `<span class="muted">—</span>`}</td>
-      <td>${S.confirm === "rmvol:" + v.id
+      <td>${S.confirm === "pw:" + v.id ? `<div class="confirm ok" style="min-width:240px"><b>New password for ${esc(first(v.name))}</b>
+          <span class="small">Use this one or type your own (8+ characters). Their old password stops working.</span>
+          <input type="text" class="in" id="np-${v.id}" value="${esc(S.tempPw)}" aria-label="New password" autocomplete="off">
+          <div class="row"><button class="btn" data-act="pwSet" data-id="${v.id}">Set password</button><button class="btn ghost" data-act="confirmNo">Cancel</button></div></div>`
+        : S.pwDone?.id === v.id ? `<div class="confirm ok" style="min-width:240px"><b>Done. Text this to ${esc(first(v.name))}:</b>${v.phone ? `<span class="small">📞 ${esc(v.phone)}</span>` : ""}
+          <code class="pwshow">${esc(S.pwDone.pw)}</code><span class="small">They'll be asked to pick their own after logging in.</span>
+          <div class="row"><button class="btn ghost" data-act="pwCopy">Copy</button><button class="btn ghost" data-act="pwClose">Close</button></div></div>`
+        : S.confirm === "rmvol:" + v.id
         ? `<div class="confirm" style="min-width:220px"><b>Remove ${esc(first(v.name))}?</b><span class="small">Deletes their account and frees any upcoming jobs. They can apply again later.</span><div class="row"><button class="btn danger" data-act="rmVolYes" data-id="${v.id}">Yes, remove</button><button class="btn ghost" data-act="confirmNo">Cancel</button></div></div>`
-        : `<button class="btn danger" data-act="rmVol" data-id="${v.id}">Remove</button>`}</td>
+        : `<div class="acts"><button class="btn ghost" data-act="pwOpen" data-id="${v.id}">Reset password</button><button class="btn danger" data-act="rmVol" data-id="${v.id}">Remove</button></div>`}</td>
     </tr>`).join("")}</tbody></table></div>`;
 }
 
@@ -862,6 +887,7 @@ function settingsView() {
       ${others.length ? `<div class="row" style="flex-wrap:nowrap"><select class="in" id="new-admin">${others.map((v) => `<option value="${v.id}">${esc(v.name)} · ${esc(v.email)}</option>`).join("")}</select><button class="btn" data-act="makeAdmin">Make admin</button></div>` : ""}
       <p class="small muted">The person signs up first through <b>Volunteer log in → Apply here</b>. Then pick them here. They'll see the admin dashboard next time they log in.</p></div>
   </section>
+  ${passwordCard()}
   <section class="card stack">
     <h2>Email log</h2>
     <p class="small muted">The last 40 emails the site sent (or tried to). Failed ones are retried automatically for 2 days.</p>
@@ -968,6 +994,20 @@ const A = {
     if (win) win.location = data.signedUrl; else location.href = data.signedUrl;
   },
   rmVol: (id) => { S.confirm = "rmvol:" + id; },
+  pwOpen: (id) => {
+    // Easy to read out or text: e.g. "maple-rake-4827".
+    const w = ["maple", "acorn", "cedar", "birch", "rake", "leaf", "garden", "pine", "willow", "clover"], n = crypto.getRandomValues(new Uint32Array(3));
+    S.tempPw = `${w[n[0] % w.length]}-${w[n[1] % w.length]}-${1000 + (n[2] % 9000)}`; S.pwDone = null; S.confirm = "pw:" + id;
+  },
+  pwSet: async (id) => {
+    const pw = $("#np-" + id).value.trim();
+    if (pw.length < 8) return toast("The password needs at least 8 characters."), SKIP;
+    await rpc("admin_set_password", { vid: id, pw });
+    S.confirm = null; S.pwDone = { id, pw };
+    return "Password set.";
+  },
+  pwCopy: () => { navigator.clipboard?.writeText(S.pwDone.pw).then(() => toast("Copied."), () => toast("Select the password and copy it.")); return SKIP; },
+  pwClose: () => { S.pwDone = null; },
   rmVolYes: async (id) => {
     const v = vol(id);
     if (v.waiverPath) await sb.storage.from("waivers").remove([v.waiverPath]); // best effort; account removal is what matters
@@ -1153,7 +1193,14 @@ document.addEventListener("submit", async (e) => {
   if (S.busy) return;
   S.busy = true; btn.classList.add("busy"); S.selfAuth = true;
   try {
-    if (form.id === "login-form") {
+    if (form.id === "pw-form") {
+      const pw = $("#pw-new").value;
+      if (pw.length < 8) throw new Error("The password needs at least 8 characters.");
+      if (pw !== $("#pw-new2").value) throw new Error("The two passwords don't match.");
+      must(await sb.auth.updateUser({ password: pw }));
+      await rpc("password_changed"); S.me.tempPassword = false;
+      toast("Password changed. Use it next time you log in.");
+    } else if (form.id === "login-form") {
       must(await sb.auth.signInWithPassword({ email: $("#l-email").value.trim(), password: $("#l-pass").value }));
       await loadMe();
       if (!S.me) throw new Error("This account has no volunteer profile. Contact the 1Yard team.");
