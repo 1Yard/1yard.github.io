@@ -1499,6 +1499,15 @@ const A = {
 /* ============ EVENTS ============ */
 document.addEventListener("click", async (e) => {
   if (S.bellOpen && !e.target.closest("#bell")) { S.bellOpen = false; drawBell(); }
+  // Links to a section on the same page glide there instead of jumping.
+  const jump = e.target.closest('a[href^="#"]:not([data-act])');
+  const spot = jump && jump.getAttribute("href").length > 1 && document.getElementById(jump.getAttribute("href").slice(1));
+  if (spot) {
+    e.preventDefault();
+    spot.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+    if (spot.id === "main") spot.focus?.();
+    return;
+  }
   const b = e.target.closest("[data-act]");
   if (b?.tagName === "A") e.preventDefault();
   if (!b || b.disabled || S.busy) return;
