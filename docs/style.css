@@ -353,3 +353,13 @@ tr.flash td { animation: flashbg 2.4s ease-out; }
 .ptop, .pwrap { --display: "Fraunces", Georgia, serif; --body: "Atkinson Hyperlegible", system-ui, sans-serif; font-family: var(--body); }
 /* iPhone Safari zooms into text boxes under 16px; keep them at 16px+ on phones. */
 @media (max-width: 720px) { input, select, textarea { font-size: max(16px, 1em); } }
+
+/* My record: milestone path */
+.ladder { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.ladder li { position: relative; display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 14px; padding: 0 0 22px; }
+.ladder li:not(:last-child)::before { content: ""; position: absolute; left: 19px; top: 40px; bottom: 0; border-left: 2px dashed var(--line); }
+.ladder li.done:not(:last-child)::before { border-left: 2px solid var(--leaf); }
+.ladder .dot { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); border: 2px solid var(--line); font-size: 1.1rem; }
+.ladder li.done .dot { background: var(--leaf); border-color: var(--leaf); color: #fff; font-weight: 700; }
+.ladder li.here .dot { box-shadow: 0 0 0 4px var(--sage-2); }
+.ladder li:not(.done) b { color: var(--muted); }

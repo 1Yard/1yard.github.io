@@ -399,7 +399,7 @@ function homeView() {
         <div>
           <p class="bubble">Fall 2026 services are now open in Kingston!</p>
           <h1>Student volunteers helping with outdoor home work, with dignity and <span class="swash">care<svg viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true"><path d="M2 10 C30 4 70 4 98 9" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span></h1>
-          <p class="lead">1Yard is a student-led volunteer organization. We help seniors and people with physical limitations with demanding outdoor tasks. It's free or pay-what-you-can, with no strings attached.</p>
+          <p class="lead">1Yard is a student-led volunteer organization. We help seniors and people with physical limitations with demanding outdoor tasks. All services are free, with the option to make a voluntary donation to the Princess Margaret Cancer Centre.</p>
           <div class="ctas">
             <svg class="sparks" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M20 4 L24 14 M6 14 L16 19 M4 30 L14 29"/></svg>
             <a class="btn primary big" href="?start=request" data-act="wizStart"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20 C4 10 10 4 20 4 C20 14 14 20 4 20 Z"/><path d="M4 20 L14 10"/></svg>Request help <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12 H19 M13 6 L19 12 L13 18"/></svg></a>
@@ -467,7 +467,7 @@ function homeView() {
         <div class="trust">
           <article><h3>Dignity first</h3><p>We treat clients as partners and decision-makers when they work with our volunteers.</p></article>
           <article><h3>Safety first</h3><p>Volunteers always work in pairs and are trained in task safety before their first job.</p></article>
-          <article><h3>No financial barriers</h3><p>Free or pay-what-you-can, with no proof of income required. No one is turned away.</p></article>
+          <article><h3>Always free</h3><p>We never charge for our help. If you'd like to give back, you can donate to the Princess Margaret Cancer Centre. No money goes through 1Yard.</p></article>
           <article><h3>Local</h3><p>Students from Kingston's high schools and universities, helping their neighbours.</p></article>
         </div>
       </div>
@@ -490,7 +490,7 @@ function homeView() {
             <li><h3>We show up and do the work</h3><span class="hand">That's it!</span></li>
           </ol>
         </div>
-        <p class="cost"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20 C4 10 10 4 20 4 C20 14 14 20 4 20 Z"/><path d="M4 20 L14 10"/></svg><span>Services are <b>free or pay-what-you-can</b>. No one is turned away due to inability to pay.</span></p>
+        <p class="cost"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20 C4 10 10 4 20 4 C20 14 14 20 4 20 Z"/><path d="M4 20 L14 10"/></svg><span>All services are <b>free</b>, with the option to make a voluntary donation to the Princess Margaret Cancer Centre. No money goes through 1Yard.</span></p>
       </div>
       <svg class="wave" viewBox="0 0 1440 70" preserveAspectRatio="none" aria-hidden="true"><path d="M0 36 C260 8 520 60 800 34 C1060 10 1280 50 1440 28 V70 H0 Z" fill="#FAF6EC"/></svg>
     </section>
@@ -504,7 +504,7 @@ function homeView() {
           <p class="big-sub">raised for the Princess Margaret Cancer Foundation since 2021, thanks to community generosity.</p>
           <a class="btn soft donate" href="https://supportthepmcf.ca/ui/PDPCelebrate/p/231bd88823ca45efa285b5439d21e30d" target="_blank" rel="noopener"><svg class="heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20 C5 15 3 11 3 8 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8 C21 11 19 15 12 20 Z"/></svg>See our donation page <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 L17 7 M9 7 H17 V15"/></svg></a>
           <ul class="facts">
-            <li>100% of donations go to Princess Margaret.</li>
+            <li>Donations go straight to Princess Margaret. No money goes through 1Yard.</li>
             <li>No money goes to volunteers or organizers.</li>
             <li>Volunteers will never ask for or accept payment directly.</li>
           </ul>
@@ -584,7 +584,7 @@ function homeView() {
         <ul><li><a href="?start=request" data-act="wizStart">Request help</a></li><li><a href="#why">Why trust 1Yard</a></li><li><a href="#how">How 1Yard works</a></li><li><a href="#impact">Community impact</a></li><li><a href="#thank">Thank a volunteer</a></li><li><a href="#volunteer">Volunteer</a></li><li><a href="#volunteer" data-act="go" data-id="login">Volunteer log in</a></li></ul>
       </div>
     </div>
-    <p class="wrap fine">We are not a business and we are not paid contractors. 100% of donations go to the Princess Margaret Cancer Foundation.</p>
+    <p class="wrap fine">We are not a business and we are not paid contractors. All services are free, with the option to make a voluntary donation to the Princess Margaret Cancer Centre. No money goes through 1Yard.</p>
   </footer>
 </div>`;
 }
@@ -803,14 +803,23 @@ function communityView() {
 // My record: level, progress, milestones and hours. Printable for applications.
 function recordView(v) {
   const st = S.stats || { hours: 0, jobs: 0, supervised: 0, thanks: 0 }, lv = levelOf(v), rules = S.levelRules || {};
-  const next = { community: "senior", senior: "team_lead" }[lv];
-  let progress = "";
-  if (lv === "trainee") progress = `<p>Finish ${SHADOW_SHIFTS_NEEDED} jobs with an experienced volunteer to become a <b>Community Volunteer</b> (${S.myShadow} of ${SHADOW_SHIFTS_NEEDED} done).</p>`;
-  else if (next && rules[next]) {
-    const need = rules[next], bar = (have, goal, label) => `<div class="prog"><div class="row" style="justify-content:space-between"><span>${label}</span><b>${fmtHours(Math.min(have, goal))} of ${goal}</b></div><div class="bar"><i style="width:${Math.min(100, (have / goal) * 100)}%"></i></div></div>`;
-    progress = `<p>Next: <b>${LEVELS[next].em} ${LEVELS[next].name}</b></p>${bar(+st.hours, need.hours, "Hours volunteered")}${bar(st.supervised, need.supervised, "Trainee shifts supervised")}`;
-  } else if (lv === "team_lead") progress = `<p>Next: <b>⭐ Yard Captain</b>, chosen by the 1Yard team for volunteers who go above and beyond.</p>`;
-  else if (lv === "captain") progress = `<p>You've reached the top level. Thank you for everything you do!</p>`;
+  const reached = Object.fromEntries(S.levelHistory.map((e) => [e.level, e.at]));
+  const cur = LEVEL_ORDER.indexOf(lv), bar = (have, goal, label) => `<div class="prog"><div class="row" style="justify-content:space-between"><span>${label}</span><b>${fmtHours(Math.min(have, goal))} of ${goal}</b></div><div class="bar"><i style="width:${Math.min(100, (have / goal) * 100)}%"></i></div></div>`;
+  // Every level you can reach by volunteering, with what it takes and how far along you are.
+  const path = [
+    ["trainee", "Finish online training and upload your signed waiver.", ""],
+    ["community", `Finish ${SHADOW_SHIFTS_NEEDED} jobs alongside an experienced volunteer.`, bar(lv === "trainee" ? S.myShadow : SHADOW_SHIFTS_NEEDED, SHADOW_SHIFTS_NEEDED, "Jobs with an experienced volunteer")],
+    ...["senior", "team_lead"].filter((k) => rules[k]).map((k) => [k, `Volunteer ${rules[k].hours} hours and supervise ${rules[k].supervised} trainee shifts.`,
+      bar(+st.hours, rules[k].hours, "Hours volunteered") + bar(st.supervised, rules[k].supervised, "Trainee shifts supervised")]),
+  ];
+  const ladder = `<ol class="ladder">${path.map(([k, need, bars], i) => {
+    const done = i <= cur, here = i === cur;
+    return `<li class="${done ? "done" : ""} ${here ? "here" : ""}"><span class="dot">${done ? "✓" : LEVELS[k].em}</span><div class="stack" style="gap:6px">
+      <div class="row"><b>${LEVELS[k].em} ${LEVELS[k].name}</b>${here ? `<span class="chip c-green">You're here</span>` : done && reached[k] ? `<span class="small muted">Reached ${fmtDate(reached[k].slice(0, 10))}</span>` : ""}</div>
+      <span class="small">${need}</span>${!done ? bars : ""}</div></li>`;
+  }).join("")}</ol>`;
+  const tip = cur >= 1 && cur < 3 ? `<p class="small muted">Tip: trainee shifts count when you're the experienced volunteer on a job with a trainee. On <b>Open jobs</b>, pick <b>Trainee needs a partner</b> to find them.</p>` : "";
+  const progress = `<h2 style="font-size:1.3rem">Your path</h2>${ladder}${tip}`;
   const stat = (cls, icon, n, label) => `<div class="stat ${cls}"><span class="sico">${icon}</span><div><b>${n}</b><span>${label}</span></div></div>`;
   return `<div class="head"><div><h1>My record</h1><p>${esc(v.name)} · ${esc(v.uni)}. Handy for school service hours and applications.</p></div><button class="btn ghost noprint" data-act="print">Print or save as PDF</button></div>
   <section class="card stack levelcard"><div class="row">${levelChip(v)}${v.trainedAt ? `<span class="small muted">Volunteer since ${fmtDate(v.trainedAt.slice(0, 10))}</span>` : ""}</div>${progress}</section>
