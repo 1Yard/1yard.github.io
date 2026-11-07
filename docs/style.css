@@ -348,3 +348,8 @@ tr.flash td { animation: flashbg 2.4s ease-out; }
   body { background: #fff; }
   .card, .stat { box-shadow: none; border: 1px solid #ddd; }
 }
+
+/* Public pages (request form, request status, log in, apply) use the homepage's type. */
+.ptop, .pwrap { --display: "Fraunces", Georgia, serif; --body: "Atkinson Hyperlegible", system-ui, sans-serif; font-family: var(--body); }
+/* iPhone Safari zooms into text boxes under 16px; keep them at 16px+ on phones. */
+@media (max-width: 720px) { input, select, textarea { font-size: max(16px, 1em); } }

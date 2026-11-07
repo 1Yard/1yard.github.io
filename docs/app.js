@@ -232,6 +232,7 @@ const ART = `<svg viewBox="0 0 260 300" aria-hidden="true">
 
 /* ============ RENDER ============ */
 function render() {
+  if (S.view === "home" || (!S.view && !S.me)) { $("#root").innerHTML = homeView(); return; }
   const views = { loading: () => `<div class="loading">Loading…</div>`, setup: setupView, home: homeView, wizard: wizardView, request: requestView, login: loginView, signup: signupView, volunteer: volunteerView, admin: adminView };
   const tempPw = S.me?.tempPassword && (S.view === "admin" || S.view === "volunteer") && S.volPage !== "vaccount" && S.adminPage !== "settings"
     ? `<div class="note">You're using a temporary password from an admin. <button class="linkbtn" data-act="${S.view === "admin" ? "adminNav" : "volNav"}" data-id="${S.view === "admin" ? "settings" : "vaccount"}">Choose your own password</button></div>` : "";
@@ -361,24 +362,231 @@ function icsText(j) {
 const setupView = () => `<div class="card stack"><h2>Almost there</h2><p>Add your Supabase URL and key to <code>docs/config.js</code> to turn the site on. See README.md.</p></div>`;
 
 /* ---------------- PUBLIC HOME ---------------- */
+// The public homepage has its own look (docs/landing.css, everything scoped to .lp).
 function homeView() {
   const saved = myTokens();
-  return `<div class="stack" style="gap:18px">
-    <h1>Need help with your yard?</h1>
-    <p>1Yard's university student volunteers help seniors and people with physical limitations in Kingston with outdoor yard work. It's free.</p>
-    <div class="card stack">
-      <p>🍂 Raking leaves, garden clean-up, last lawn mow, and picking up branches.</p>
-      <p>🧤 Two volunteers come together. They bring gloves and use your tools.</p>
-      <p>🏡 We only work outside. We never need to come into your home.</p>
+  return `<div class="lp" id="top">
+  <a class="skip" href="#main">Skip to content</a>
+  <header>
+    <div class="nav">
+      <a class="logo" href="#top" aria-label="1Yard home">
+        <svg width="42" height="34" viewBox="0 0 44 34" aria-hidden="true"><g fill="#4F7A2C"><circle cx="9" cy="11" r="7"/><circle cx="22" cy="8" r="8" fill="#1F4D2B"/><circle cx="35" cy="12" r="6.5"/></g><g stroke="#1F4D2B" stroke-width="2.4" stroke-linecap="round"><path d="M9 17v14M22 15v16M35 18v13"/></g></svg>
+        1Yard
+      </a>
+      <nav class="pills" aria-label="On this page">
+        <a href="#why"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 L19 6 V11 C19 16 16 19 12 21 C8 19 5 16 5 11 V6 Z"/><path d="M9 12 L11 14 L15 10"/></svg>Why trust 1Yard</a>
+        <a href="#how"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18 C14 18 10 6 16 6"/></svg>How 1Yard works</a>
+        <a href="#impact"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20 C5 15 3 11 3 8 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8 C21 11 19 15 12 20 Z"/></svg>Community impact</a>
+      </nav>
+      <div class="vlinks"><a href="#volunteer" data-act="go" data-id="signup">Apply to volunteer</a><a href="#volunteer" data-act="go" data-id="login">Volunteer log in</a></div>
+      <a class="btn primary" href="?start=request" data-act="wizStart">Request help <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12 H19 M13 6 L19 12 L13 18"/></svg></a>
     </div>
-    <button class="bigbtn" data-act="wizStart">Ask for help</button>
-    ${saved.length ? `<button class="bigbtn ghost" data-act="openRequest" data-id="${esc(saved[0])}">See my request</button>` : ""}
-    ${OFFICE_PHONE ? `<p class="muted" style="text-align:center">Prefer to talk? Call us at <b>${esc(OFFICE_PHONE)}</b></p>` : ""}
-    <div class="card home-vol" style="margin-top:20px">
-      <div><h3>University student? Volunteer with 1Yard.</h3><p class="small muted">Help neighbours with yard work around your classes. You pick the jobs and times.</p></div>
-      <div class="row"><button class="btn" data-act="go" data-id="signup">Apply</button><button class="btn ghost" data-act="go" data-id="login">Log in</button></div>
+  </header>
+
+  <main id="main">
+    <!-- HERO · cream -->
+    <section class="hero bg-cream has-wave">
+      <svg class="corner-branch" viewBox="-6 -14 268 104" fill="none" stroke="#4F7A2C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M-4 52 C60 38 130 22 250 6" stroke="#8A6A45" stroke-width="3"/>
+        <path d="M40 44 C34 24 44 12 56 8 C62 26 54 38 40 44 Z" fill="#DCE8CC"/>
+        <path d="M66 39 C78 56 74 74 62 80 C54 64 56 50 66 39 Z" fill="#C9DCB0"/>
+        <path d="M108 30 C102 12 112 0 124 -4 C130 12 122 26 108 30 Z" fill="#DCE8CC"/>
+        <path d="M138 26 C150 42 146 60 134 66 C126 50 128 36 138 26 Z" fill="#DCE8CC"/>
+        <path d="M190 16 C186 2 194 -8 204 -10 C208 4 202 14 190 16 Z" fill="#C9DCB0"/>
+        <path d="M16 48 C24 66 18 82 6 86 C0 70 4 58 16 48 Z" fill="#DCE8CC"/>
+      </svg>
+      <div class="wrap hero-grid">
+        <div>
+          <p class="bubble">Fall 2026 services are now open in Kingston!</p>
+          <h1>Student volunteers helping with outdoor home work, with dignity and <span class="swash">care<svg viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true"><path d="M2 10 C30 4 70 4 98 9" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span></h1>
+          <p class="lead">1Yard is a student-led volunteer organization. We help seniors and people with physical limitations with demanding outdoor tasks. It's free or pay-what-you-can, with no strings attached.</p>
+          <div class="ctas">
+            <svg class="sparks" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M20 4 L24 14 M6 14 L16 19 M4 30 L14 29"/></svg>
+            <a class="btn primary big" href="?start=request" data-act="wizStart"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20 C4 10 10 4 20 4 C20 14 14 20 4 20 Z"/><path d="M4 20 L14 10"/></svg>Request help <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12 H19 M13 6 L19 12 L13 18"/></svg></a>
+            <a class="btn soft big" href="#thank"><svg class="heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20 C5 15 3 11 3 8 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8 C21 11 19 15 12 20 Z"/></svg>Thank a volunteer</a>
+          </div>
+          <p class="call"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4 H9 L11 9 L8.5 10.5 A11 11 0 0 0 13.5 15.5 L15 13 L20 15 V19 A2 2 0 0 1 18 21 A16 16 0 0 1 3 6 A2 2 0 0 1 5 4 Z"/></svg>Prefer to talk? Call <a href="tel:4164310010">416-431-0010</a> or email <a href="mailto:1yardqueens@gmail.com">1yardqueens@gmail.com</a></p>
+          ${saved.length ? `<p class="mine"><button class="linkbtn" data-act="openRequest" data-id="${esc(saved[0])}">See my request</button></p>` : ""}
+        </div>
+        <!-- Hand-drawn garden scene: shrub, wheelbarrow of leaves, rake -->
+        <svg class="scene" viewBox="0 0 520 440" aria-hidden="true">
+          <path d="M40 372 C110 314 270 296 380 306 C470 314 516 344 516 374 C516 410 420 428 280 428 C140 428 40 410 40 372 Z" fill="#DCE8CC"/>
+          <path d="M70 398 C150 376 330 370 480 390 C500 394 500 414 470 420 C360 434 180 434 96 422 C64 418 58 404 70 398 Z" fill="#C9DCB0"/>
+          <g fill="#A9C784"><circle cx="400" cy="250" r="62"/><circle cx="460" cy="282" r="54"/><circle cx="350" cy="300" r="46"/></g>
+          <g fill="#8DB06A"><circle cx="430" cy="214" r="34"/><circle cx="486" cy="250" r="30"/></g>
+          <g fill="#FFFFFF" stroke="#E6DCC4" stroke-width="2"><circle cx="372" cy="262" r="9"/><circle cx="420" cy="290" r="10"/><circle cx="462" cy="244" r="8"/><circle cx="398" cy="226" r="7"/><circle cx="480" cy="300" r="9"/></g>
+          <path d="M268 120 L330 368" stroke="#8A6A45" stroke-width="5" stroke-linecap="round"/>
+          <g stroke="#536253" stroke-width="3" stroke-linecap="round"><path d="M306 352 L354 364 M310 356 L306 384 M318 358 L318 388 M326 360 L330 390 M334 362 L342 390 M342 364 L354 386"/></g>
+          <path d="M130 300 H270 L250 350 H150 Z" fill="#4F7A2C"/>
+          <path d="M130 300 H270" stroke="#2F5A17" stroke-width="5" stroke-linecap="round"/>
+          <path d="M150 350 L120 380 M250 350 L264 380" stroke="#536253" stroke-width="5" stroke-linecap="round"/>
+          <circle cx="200" cy="372" r="16" fill="#3A3A32"/><circle cx="200" cy="372" r="6" fill="#C9DCB0"/>
+          <path d="M270 300 L310 292" stroke="#8A6A45" stroke-width="5" stroke-linecap="round"/>
+          <path d="M150 300 C150 280 170 270 186 276 C182 292 168 300 150 300 Z" fill="#D9822B"/>
+          <path d="M190 298 C186 276 206 264 222 268 C222 286 208 298 190 298 Z" fill="#C2412D"/>
+          <path d="M226 300 C228 282 246 274 260 282 C254 296 240 302 226 300 Z" fill="#E3A72F"/>
+          <path d="M90 400 C84 386 94 376 106 378 C108 392 100 400 90 400 Z" fill="#D9822B"/>
+          <path d="M290 412 C292 398 306 392 316 398 C312 410 302 414 290 412 Z" fill="#C2412D"/>
+          <path d="M60 418 C58 406 70 400 80 404 C78 416 70 420 60 418 Z" fill="#E3A72F"/>
+        </svg>
+      </div>
+      <svg class="wave" viewBox="0 0 1440 70" preserveAspectRatio="none" aria-hidden="true"><path d="M0 40 C240 0 480 70 760 36 C1020 6 1240 52 1440 24 V70 H0 Z" fill="#EEF3E6"/></svg>
+    </section>
+
+    <!-- SERVICES · sage -->
+    <section class="svc-band has-wave" aria-labelledby="svc-title">
+      <div class="wrap">
+        <div class="svc-row">
+          <h2 class="svc-title" id="svc-title">This fall, we can help with</h2>
+          <ul class="svc">
+            <li><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M10 38 C10 20 22 10 38 10 C38 26 28 38 10 38 Z"/><path d="M10 38 L30 18"/></svg>Raking leaves</li>
+            <li><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 44 V22"/><path d="M24 30 C24 22 30 16 38 16 C38 24 32 30 24 30 Z"/><path d="M24 26 C24 18 18 12 10 12 C10 20 16 26 24 26 Z"/></svg>Garden bed clean-up</li>
+            <li><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M6 40 H42"/><path d="M12 40 C12 30 10 24 8 20 M18 40 C18 28 20 22 24 16 M26 40 C26 30 28 26 32 22 M34 40 C34 32 36 28 40 26"/></svg>The last lawn mow</li>
+            <li><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M6 34 L42 18"/><path d="M20 28 L16 16 M30 24 L34 12 M26 26 L30 36"/></svg>Branches and yard debris</li>
+          </ul>
+        </div>
+        <p class="svc-note">Two volunteers come together. They bring gloves and use your tools. We only work outside.</p>
+      </div>
+      <svg class="wave" viewBox="0 0 1440 70" preserveAspectRatio="none" aria-hidden="true"><path d="M0 30 C300 64 560 4 860 28 C1120 48 1300 14 1440 34 V70 H0 Z" fill="#FFFFFF"/></svg>
+    </section>
+
+    <!-- WHY TRUST · white -->
+    <section class="bg-white has-wave" id="why">
+      <div class="wrap split">
+        <div>
+          <span class="tag green"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 L19 6 V11 C19 16 16 19 12 21 C8 19 5 16 5 11 V6 Z"/><path d="M9 12 L11 14 L15 10"/></svg>Why trust 1Yard</span>
+          <h2>We exist to extend <span class="swash">care<svg viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true"><path d="M2 10 C30 4 70 4 98 9" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span>, not just complete tasks.</h2>
+          <p class="pull">Our volunteers step in as an extension of our clients' capacity when aging, illness, or mobility makes everyday tasks difficult.</p>
+          <svg class="sprig" viewBox="0 0 120 60" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M6 52 C40 46 76 30 112 8"/>
+            <path d="M40 44 C36 30 44 22 54 20 C56 32 50 40 40 44 Z" fill="#DCE8CC"/>
+            <path d="M66 34 C74 46 70 56 60 58 C56 48 58 40 66 34 Z" fill="#DCE8CC"/>
+            <path d="M88 22 C86 10 94 2 104 2 C104 12 98 20 88 22 Z" fill="#C9DCB0"/>
+          </svg>
+        </div>
+        <div class="trust">
+          <article><h3>Dignity first</h3><p>We treat clients as partners and decision-makers when they work with our volunteers.</p></article>
+          <article><h3>Safety first</h3><p>Volunteers always work in pairs and are trained in task safety before their first job.</p></article>
+          <article><h3>No financial barriers</h3><p>Free or pay-what-you-can, with no proof of income required. No one is turned away.</p></article>
+          <article><h3>Local</h3><p>Students from Kingston's high schools and universities, helping their neighbours.</p></article>
+        </div>
+      </div>
+      <svg class="wave" viewBox="0 0 1440 70" preserveAspectRatio="none" aria-hidden="true"><path d="M0 26 C220 56 520 50 780 22 C1040 -2 1260 30 1440 46 V70 H0 Z" fill="#EEF3E6"/></svg>
+    </section>
+
+    <!-- HOW 1YARD WORKS · sage -->
+    <section class="bg-sage has-wave" id="how">
+      <div class="wrap">
+        <div class="steps-head"><div>
+          <span class="tag orange"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18 C14 18 10 6 16 6"/></svg>How 1Yard works</span>
+          <h2>Getting help is <span class="swash orange">simple<svg viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true"><path d="M2 10 C30 4 70 4 98 9" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span></h2>
+        </div></div>
+        <div class="steps-wrap" style="position:relative;margin-top:48px">
+          <svg class="path" viewBox="0 0 900 48" preserveAspectRatio="none" aria-hidden="true"><path d="M0 25 C120 4 220 46 300 25 C380 4 480 46 600 25 C700 8 800 42 900 25" fill="none" stroke="currentColor" stroke-width="2.5" stroke-dasharray="7 9" stroke-linecap="round"/></svg>
+          <ol class="steps">
+            <li><h3>Reach out</h3><p>Request help on our website, or give us a call.</p></li>
+            <li><h3>Tell us what you need</h3><p>We'll ask about your address, the work, and a few days that suit you.</p></li>
+            <li><h3>We find two volunteers</h3><p>They pick a time on one of your days, and we let you know.</p></li>
+            <li><h3>We show up and do the work</h3><span class="hand">That's it!</span></li>
+          </ol>
+        </div>
+        <p class="cost"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20 C4 10 10 4 20 4 C20 14 14 20 4 20 Z"/><path d="M4 20 L14 10"/></svg><span>Services are <b>free or pay-what-you-can</b>. No one is turned away due to inability to pay.</span></p>
+      </div>
+      <svg class="wave" viewBox="0 0 1440 70" preserveAspectRatio="none" aria-hidden="true"><path d="M0 36 C260 8 520 60 800 34 C1060 10 1280 50 1440 28 V70 H0 Z" fill="#FAF6EC"/></svg>
+    </section>
+
+    <!-- IMPACT · cream -->
+    <section class="bg-cream has-wave" id="impact">
+      <div class="wrap impact-grid">
+        <div>
+          <span class="tag red"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20 C5 15 3 11 3 8 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8 C21 11 19 15 12 20 Z"/></svg>Community impact</span>
+          <div><p class="bignum">$17,000+<svg class="sparks" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M20 4 L16 14 M34 14 L24 19 M36 30 L26 29"/></svg></p></div>
+          <p class="big-sub">raised for the Princess Margaret Cancer Foundation since 2021, thanks to community generosity.</p>
+          <a class="btn soft donate" href="https://supportthepmcf.ca/ui/PDPCelebrate/p/231bd88823ca45efa285b5439d21e30d" target="_blank" rel="noopener"><svg class="heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20 C5 15 3 11 3 8 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8 C21 11 19 15 12 20 Z"/></svg>See our donation page <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 L17 7 M9 7 H17 V15"/></svg></a>
+          <ul class="facts">
+            <li>100% of donations go to Princess Margaret.</li>
+            <li>No money goes to volunteers or organizers.</li>
+            <li>Volunteers will never ask for or accept payment directly.</li>
+          </ul>
+        </div>
+        <div class="featured">
+          <p class="hand">Featured by</p>
+          <p><a href="https://globalnews.ca/video/10064957/young-man-honours-late-mother-by-starting-student-led-volunteer-organization" target="_blank" rel="noopener">Global News</a> and the <a href="https://torontoguardian.com/2023/08/toronto-charity-1yard/" target="_blank" rel="noopener">Toronto Guardian</a></p>
+        </div>
+      </div>
+      <svg class="wave" viewBox="0 0 1440 70" preserveAspectRatio="none" aria-hidden="true"><path d="M0 22 C280 52 540 6 820 30 C1080 52 1280 12 1440 30 V70 H0 Z" fill="#EEF3E6"/></svg>
+    </section>
+
+    <!-- THANK A VOLUNTEER · sage -->
+    <section class="bg-sage has-wave" id="thank">
+      <div class="wrap thank-grid">
+        <div>
+          <span class="tag red"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20 C5 15 3 11 3 8 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8 C21 11 19 15 12 20 Z"/></svg>Thank a volunteer</span>
+          <h2>Did our volunteers help <span class="swash red">you?<svg viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true"><path d="M2 10 C30 4 70 4 98 9" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span></h2>
+          <p style="margin-top:18px">A few kind words mean a lot to the students who came by.</p>
+        </div>
+        <div class="thank-card">
+          <svg class="sparks" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M20 4 L16 14 M34 14 L24 19 M36 30 L26 29"/></svg>
+          ${saved.length ? `<h3>Send thanks from your request page</h3>
+          <p>Open your request and tap <b>Send thanks</b>. You can add a short message for the volunteers.</p>
+          <div><button class="btn primary big" data-act="openRequest" data-id="${esc(saved[0])}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20 C5 15 3 11 3 8 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8 C21 11 19 15 12 20 Z"/></svg>Open my request</button></div>
+          <p class="opt">Or tell us by phone or email:</p>` : `<h3>Tell us, and we'll pass it on</h3>
+          <p>Give us a call or send an email with your name and street, and a few words for the volunteers.</p>`}
+          <p class="call"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4 H9 L11 9 L8.5 10.5 A11 11 0 0 0 13.5 15.5 L15 13 L20 15 V19 A2 2 0 0 1 18 21 A16 16 0 0 1 3 6 A2 2 0 0 1 5 4 Z"/></svg><a href="tel:4164310010">416-431-0010</a> or <a href="mailto:1yardqueens@gmail.com?subject=Thank%20you%20to%20our%201Yard%20volunteers">1yardqueens@gmail.com</a></p>
+        </div>
+      </div>
+      <svg class="wave" viewBox="0 0 1440 70" preserveAspectRatio="none" aria-hidden="true"><path d="M0 40 C300 10 600 58 900 30 C1140 8 1300 40 1440 26 V70 H0 Z" fill="#FFFFFF"/></svg>
+    </section>
+
+    <!-- VOLUNTEER · white -->
+    <section class="bg-white has-wave" id="volunteer">
+      <div class="wrap vol">
+        <svg class="vol-art" viewBox="0 0 300 240" aria-hidden="true">
+          <path d="M20 210 C70 180 230 176 286 206 C290 222 250 232 150 232 C60 232 16 226 20 210 Z" fill="#DCE8CC"/>
+          <path d="M92 214 L196 44" stroke="#8A6A45" stroke-width="5" stroke-linecap="round"/>
+          <g stroke="#536253" stroke-width="3" stroke-linecap="round" fill="none"><path d="M172 30 L222 60 M176 34 L168 52 M188 40 L180 60 M200 48 L192 68 M212 54 L204 74"/></g>
+          <path d="M120 212 C106 200 106 184 118 176 C128 188 130 202 120 212 Z" fill="#D9822B"/>
+          <path d="M152 218 C162 202 180 198 190 206 C182 218 166 222 152 218 Z" fill="#C2412D"/>
+          <path d="M210 206 C206 190 216 178 230 178 C232 194 222 204 210 206 Z" fill="#E3A72F"/>
+          <path d="M54 206 C50 190 60 178 74 178 C76 194 66 204 54 206 Z" fill="#A9C784"/>
+          <path d="M244 214 C250 200 266 196 276 202 C270 214 256 218 244 214 Z" fill="#D9822B"/>
+          <g fill="none" stroke="#E3A72F" stroke-width="3" stroke-linecap="round"><path d="M236 24 L240 36 M256 32 L246 40 M260 52 L248 52"/></g>
+        </svg>
+        <div>
+          <span class="tag green"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20 C4 10 10 4 20 4 C20 14 14 20 4 20 Z"/><path d="M4 20 L14 10"/></svg>Volunteer</span>
+          <h2>High school or university student? Volunteer with <span class="swash">1Yard.<svg viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true"><path d="M2 10 C30 4 70 4 98 9" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span></h2>
+          <p style="margin-top:18px">Help neighbours with yard work around your classes. You pick the jobs and times, always with a partner. Your first two jobs are alongside an experienced volunteer.</p>
+          <div class="ctas"><a class="btn primary big" href="#volunteer" data-act="go" data-id="signup">Apply to volunteer <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12 H19 M13 6 L19 12 L13 18"/></svg></a><a class="btn soft" href="#volunteer" data-act="go" data-id="login">Volunteer log in</a></div>
+        </div>
+      </div>
+      <svg class="wave" viewBox="0 0 1440 70" preserveAspectRatio="none" aria-hidden="true"><path d="M0 30 C240 60 520 10 800 32 C1060 52 1260 16 1440 36 V70 H0 Z" fill="#1F4D2B"/></svg>
+    </section>
+  </main>
+
+  <footer>
+    <svg class="foot-leaves" viewBox="0 0 220 200" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <path d="M30 190 C70 150 120 120 210 104"/>
+      <path d="M80 152 C70 120 84 98 104 92 C110 120 100 142 80 152 Z"/>
+      <path d="M128 126 C124 96 140 76 162 74 C164 102 150 120 128 126 Z"/>
+      <path d="M110 140 C138 140 156 154 160 172 C134 176 116 162 110 140 Z"/>
+    </svg>
+    <div class="wrap foot">
+      <div>
+        <p class="logo" style="color:#fff">1Yard</p>
+        <p style="margin-top:8px">Student volunteers providing essential outdoor home services in Kingston, with dignity and care.</p>
+      </div>
+      <div>
+        <h3>Contact us</h3>
+        <ul><li>Phone: <a href="tel:4164310010">416-431-0010</a></li><li>Email: <a href="mailto:1yardqueens@gmail.com">1yardqueens@gmail.com</a></li><li>Instagram: @1yard.ca</li><li>Nextdoor: search @1Yard</li></ul>
+      </div>
+      <div>
+        <h3>On this page</h3>
+        <ul><li><a href="?start=request" data-act="wizStart">Request help</a></li><li><a href="#why">Why trust 1Yard</a></li><li><a href="#how">How 1Yard works</a></li><li><a href="#impact">Community impact</a></li><li><a href="#thank">Thank a volunteer</a></li><li><a href="#volunteer">Volunteer</a></li><li><a href="#volunteer" data-act="go" data-id="login">Volunteer log in</a></li></ul>
+      </div>
     </div>
-  </div>`;
+    <p class="wrap fine">We are not a business and we are not paid contractors. 100% of donations go to the Princess Margaret Cancer Foundation.</p>
+  </footer>
+</div>`;
 }
 
 /* ---------------- CLIENT: status page (private link) ---------------- */
@@ -1241,6 +1449,7 @@ const A = {
 document.addEventListener("click", async (e) => {
   if (S.bellOpen && !e.target.closest("#bell")) { S.bellOpen = false; drawBell(); }
   const b = e.target.closest("[data-act]");
+  if (b?.tagName === "A") e.preventDefault();
   if (!b || b.disabled || S.busy) return;
   const fn = A[b.dataset.act]; if (!fn) return;
   S.busy = true; b.classList.add("busy");
@@ -1355,6 +1564,7 @@ document.addEventListener("submit", async (e) => {
   render();
   try {
     const params = new URLSearchParams(location.search), tok = params.get("request");
+    if (params.get("start") === "request") { history.replaceState(null, "", location.pathname); A.wizStart(); return render(); }
     if (tok) { S.token = tok; S.view = "request"; rememberToken(tok); await loadRequest(); }
     else {
       // Links in emails look like ?go=job:<id>. Log in first if needed, then jump there.

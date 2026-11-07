@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>1Yard · Design draft</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Caveat:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --cream: #FAF6EC;
+  --sage: #EEF3E6;
+  --white: #FFFFFF;
+  --ink: #1D2A1F;
+  --muted: #536253;
+  --forest: #1F4D2B;
+  --leaf: #4F7A2C;
+  --moss: #A9C784;
+  --line: #E3E6DA;
+  /* accent tints, one per theme: trust = green, how = orange, impact/thanks = red */
+  --t-green: #E4EDD6; --t-green-ink: #1F4D2B;
+  --t-orange: #F8E9D2; --t-orange-ink: #6B4A12;
+  --t-red: #F9E1DA; --t-red-ink: #8A3524;
+  --t-blue: #E3ECF5;
+  --spark: #E3A72F;
+  --serif: "Fraunces", Georgia, serif;
+  --sans: "Atkinson Hyperlegible", system-ui, sans-serif;
+  --hand: "Caveat", "Segoe Print", cursive;
+  --gutter: clamp(16px, 4vw, 40px);
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+html { scroll-behavior: smooth; scroll-padding-top: 110px; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { background: var(--cream); color: var(--ink); font-family: var(--sans); font-size: clamp(17px, 1.1vw + 12px, 19px); line-height: 1.6; overflow-x: hidden; }
+h1, h2, h3 { font-family: var(--serif); font-weight: 500; color: var(--forest); margin: 0; letter-spacing: -.01em; }
+h1 { font-size: clamp(2.05rem, 2.6vw + .9rem, 2.85rem); line-height: 1.08; font-variation-settings: "SOFT" 100; }
+h2 { font-size: clamp(1.7rem, 2.4vw + .7rem, 2.5rem); line-height: 1.15; font-variation-settings: "SOFT" 100; }
+h3 { font-size: 1.3rem; line-height: 1.25; }
+p { margin: 0; }
+a { color: var(--forest); text-underline-offset: 4px; }
+:focus-visible { outline: 3px solid var(--leaf); outline-offset: 3px; border-radius: 6px; }
+.skip { position: absolute; left: -999px; top: 8px; background: var(--white); padding: 10px 14px; border-radius: 10px; }
+.skip:focus { left: 16px; z-index: 10; }
+.wrap { max-width: 1160px; margin: 0 auto; padding: 0 var(--gutter); }
+section { position: relative; padding: clamp(56px, 7vw, 92px) 0; }
+.bg-cream { background: var(--cream); }
+.bg-sage { background: var(--sage); }
+.bg-white { background: var(--white); }
+
+/* soft wavy edge at the bottom of a section, filled with the next section's colour */
+.wave { position: absolute; left: 0; right: 0; bottom: -1px; width: 100%; height: clamp(36px, 5vw, 70px); display: block; pointer-events: none; }
+section.has-wave { padding-bottom: calc(clamp(56px, 7vw, 92px) + clamp(30px, 4vw, 56px)); }
+
+/* little coloured tag above each heading, matching the top pills */
+.tag { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px 6px 10px; border-radius: 999px; font-weight: 700; font-size: .9rem; margin-bottom: 16px; }
+.tag svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.tag.green { background: var(--t-green); color: var(--t-green-ink); }
+.tag.orange { background: var(--t-orange); color: var(--t-orange-ink); }
+.tag.red { background: var(--t-red); color: var(--t-red-ink); }
+
+/* hand-drawn underline under one word */
+.swash { position: relative; white-space: nowrap; }
+.swash svg { position: absolute; left: -2%; bottom: -.32em; width: 104%; height: .36em; color: var(--moss); overflow: visible; }
+.swash.red svg { color: #E9A897; }
+.swash.orange svg { color: #E7C08A; }
+.sparks { position: absolute; width: 36px; color: var(--spark); pointer-events: none; }
+.hand { font-family: var(--hand); font-size: 1.7rem; line-height: 1.15; color: var(--forest); }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 52px; padding: 0 26px; border-radius: 999px; font: 700 1.05rem var(--sans); text-decoration: none; border: 2px solid var(--forest); cursor: pointer; transition: transform .12s, box-shadow .12s, background .12s; }
+.btn.primary { background: var(--forest); color: #fff; }
+.btn.primary:hover { background: #173c21; }
+.btn.soft { background: var(--white); color: var(--forest); }
+.btn.soft:hover { background: #FFF6F3; }
+.btn.big { min-height: 60px; padding: 0 30px; font-size: 1.15rem; box-shadow: 0 7px 0 #C7D8B2; }
+.btn.big:hover { transform: translateY(2px); box-shadow: 0 5px 0 #C7D8B2; }
+.btn.soft.big { box-shadow: none; }
+.btn.soft.big:hover { transform: none; }
+.btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.btn .heart { stroke: #C2412D; }
+.btn .arrow { width: 18px; height: 18px; stroke-width: 2.4; }
+@media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
+
+/* header */
+header { position: sticky; top: 0; z-index: 5; background: rgba(250, 246, 236, .95); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.nav { max-width: 1260px; margin: 0 auto; padding: 14px max(var(--gutter), env(safe-area-inset-right)) 14px max(var(--gutter), env(safe-area-inset-left)); display: flex; align-items: center; flex-wrap: wrap; gap: 12px 14px; min-height: 74px; }
+.logo { display: flex; align-items: center; gap: 10px; font-family: var(--serif); font-size: 1.8rem; font-weight: 600; color: var(--forest); text-decoration: none; margin-right: 14px; }
+.pills { display: flex; gap: 10px; }
+.pills a { display: inline-flex; align-items: center; gap: 8px; min-height: 42px; padding: 0 16px 0 12px; border-radius: 999px; font-weight: 700; font-size: .95rem; text-decoration: none; border: 1.5px solid transparent; white-space: nowrap; }
+.pills a svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.pills a:nth-child(1) { background: var(--t-green); color: var(--t-green-ink); }
+.pills a:nth-child(2) { background: var(--t-orange); color: var(--t-orange-ink); }
+.pills a:nth-child(3) { background: var(--t-red); color: var(--t-red-ink); }
+.pills a:hover { border-color: currentColor; }
+.vlinks { display: flex; gap: 20px; margin-left: auto; font-size: .95rem; }
+.vlinks a { white-space: nowrap; }
+.nav .btn { min-height: 48px; padding: 0 22px; font-size: 1rem; }
+
+/* hero */
+.hero { padding-top: clamp(20px, 2.4vw, 34px); overflow: hidden; }
+.hero-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: clamp(20px, 3vw, 40px); align-items: center; }
+.corner-branch { position: absolute; top: 6px; left: 0; width: clamp(150px, 18vw, 250px); pointer-events: none; }
+.bubble { position: relative; display: inline-block; font-family: var(--hand); font-size: clamp(1.4rem, 1vw + 1rem, 1.6rem); line-height: 1.2; color: var(--forest); background: var(--t-green); padding: 8px 24px 10px; border-radius: 26px; transform: rotate(-1.5deg); margin: 14px 0 20px clamp(8px, 3vw, 40px); }
+.bubble::after { content: ""; position: absolute; left: 26px; bottom: -14px; border-width: 16px 14px 0 0; border-style: solid; border-color: var(--t-green) transparent transparent; }
+.hero .lead { font-size: 1.08em; margin: 20px 0 24px; max-width: 34em; }
+.hero .ctas { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 18px; position: relative; }
+.hero .ctas .sparks { left: -34px; top: -24px; }
+.call { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; margin-top: 18px; color: var(--muted); }
+.call > svg { width: 22px; height: 22px; fill: none; stroke: var(--forest); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.call a { font-weight: 700; }
+.scene { width: 112%; max-width: 580px; justify-self: end; margin: 0 -70px -10px 0; }
+
+/* services band */
+.svc-band { background: var(--sage); padding-top: 18px; }
+.svc-row { display: flex; align-items: center; flex-wrap: wrap; gap: 14px 16px; }
+.svc-title { font-size: clamp(1.4rem, 1vw + 1rem, 1.6rem); margin-right: 14px; }
+.svc { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 12px; }
+.svc li { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 1.05rem; padding: 12px 22px 12px 14px; border-radius: 999px; }
+.svc li:nth-child(1) { background: var(--t-orange); }
+.svc li:nth-child(2) { background: #DCE8CC; }
+.svc li:nth-child(3) { background: var(--t-red); }
+.svc li:nth-child(4) { background: var(--t-blue); }
+.svc svg { width: 30px; height: 30px; fill: none; stroke: var(--forest); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.svc-note { margin-top: 22px; color: var(--muted); }
+
+/* why trust */
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: clamp(32px, 5vw, 64px); align-items: start; }
+.pull { font-family: var(--serif); font-size: clamp(1.3rem, 1vw + 1rem, 1.55rem); line-height: 1.35; color: var(--forest); margin-top: 26px; padding-left: 20px; border-left: 3px solid var(--moss); }
+.sprig { width: 120px; color: var(--leaf); margin-top: 30px; }
+.trust { display: grid; }
+.trust article { display: grid; grid-template-columns: minmax(150px, 210px) 1fr; gap: 8px 24px; padding: 22px 0; border-top: 1px solid var(--line); }
+.trust article:last-child { border-bottom: 1px solid var(--line); }
+.trust h3 { display: flex; gap: 10px; align-items: baseline; }
+.trust h3::before { content: ""; width: 10px; height: 10px; flex: none; border-radius: 50% 0 50% 0; background: var(--leaf); transform: translateY(-2px); }
+
+/* how 1Yard works */
+.steps-head { display: flex; justify-content: flex-end; text-align: right; }
+.steps-head > div { max-width: 30em; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px; counter-reset: s; position: relative; }
+.path { position: absolute; top: 2px; left: 24px; width: calc(75% + 7px); height: 48px; color: #E0B680; pointer-events: none; }
+.steps li { position: relative; padding-top: 72px; counter-increment: s; }
+.steps li::before { content: counter(s); position: absolute; top: 0; left: 0; width: 50px; height: 50px; border-radius: 50%; background: var(--white); color: var(--t-orange-ink); border: 2px solid #E0B680; font: 600 1.3rem var(--serif); display: grid; place-items: center; }
+.steps li:last-child::before { background: var(--forest); color: #fff; border-color: var(--forest); }
+.steps h3 { margin-bottom: 6px; }
+.steps .hand { display: inline-block; margin-top: 4px; color: var(--leaf); transform: rotate(-3deg); }
+.cost { margin-top: 36px; display: inline-flex; align-items: center; gap: 12px; background: var(--white); border-radius: 999px; padding: 12px 22px; font-size: 1.05rem; }
+.cost svg { width: 24px; height: 24px; flex: none; fill: none; stroke: var(--leaf); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* impact */
+.impact-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: clamp(32px, 5vw, 56px); align-items: center; }
+.bignum { font-family: var(--serif); font-weight: 500; font-size: clamp(3.4rem, 7vw + 1rem, 6.2rem); line-height: 1; color: var(--forest); letter-spacing: -.02em; position: relative; display: inline-block; }
+.bignum .sparks { right: -40px; top: -10px; color: #E9A897; }
+.big-sub { font-size: 1.15em; margin-top: 18px; max-width: 24em; }
+.donate { margin-top: 20px; border-color: #E9A897; }
+.facts { margin: 26px 0 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.facts li { padding-left: 30px; position: relative; }
+.facts li::before { content: ""; position: absolute; left: 2px; top: .45em; width: 16px; height: 14px; background: no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 22'%3E%3Cpath d='M12 20 C5 15 3 11 3 8 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8 C21 11 19 15 12 20 Z' fill='%23E9A897'/%3E%3C/svg%3E"); }
+.featured { position: relative; background: var(--white); border-radius: 28px; padding: 28px 30px; transform: rotate(1.2deg); }
+.featured::after { content: ""; position: absolute; left: 40px; bottom: -14px; border-width: 16px 0 0 14px; border-style: solid; border-color: var(--white) transparent transparent; }
+.featured .hand { color: var(--t-red-ink); margin-bottom: 6px; }
+.featured p:last-child { font-size: 1.15rem; }
+.featured a { font-weight: 700; }
+
+/* thank */
+.thank-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: clamp(32px, 5vw, 56px); align-items: start; }
+.thank-card { position: relative; background: var(--white); border-radius: 24px; padding: clamp(22px, 3vw, 30px); display: grid; gap: 16px; box-shadow: 0 8px 0 #F2D2C8; }
+.thank-card .sparks { right: -18px; top: -26px; color: #E9A897; }
+label { font-weight: 700; display: block; margin-bottom: 6px; }
+input, textarea { width: 100%; font: inherit; font-size: max(16px, 1em); -webkit-appearance: none; appearance: none; color: inherit; padding: 13px 15px; border: 2px solid var(--line); border-radius: 14px; background: var(--white); }
+input:focus, textarea:focus { border-color: var(--leaf); outline: none; }
+textarea { min-height: 110px; resize: vertical; }
+.opt { font-weight: 400; color: var(--muted); }
+
+/* volunteer */
+.vol { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: clamp(28px, 5vw, 56px); align-items: center; }
+.vol-art { width: 100%; max-width: 360px; justify-self: center; }
+.vol .ctas { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin-top: 28px; }
+
+/* footer */
+footer { background: var(--forest); color: #E9F0E1; padding: 40px 0; position: relative; overflow: hidden; }
+footer a { color: #fff; }
+.foot { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); gap: 40px; }
+footer h3 { color: #fff; font-size: 1.15rem; margin-bottom: 10px; }
+footer ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.foot-leaves { position: absolute; right: -10px; bottom: -6px; width: 220px; color: rgba(169, 199, 132, .35); }
+.fine { margin-top: 40px; font-size: .9rem; color: #BFD0B3; }
+
+/* in-between widths: tighten the header before anything wraps */
+@media (max-width: 1240px) {
+  .pills a { padding: 0 13px 0 10px; font-size: .9rem; }
+  .vlinks { gap: 14px; font-size: .9rem; }
+  .logo { margin-right: 4px; }
+}
+@media (max-width: 1080px) {
+  .pills { order: 3; width: 100%; }
+  .scene { width: 100%; margin: 0 -20px 0 0; }
+}
+@media (max-width: 860px) {
+  .hero-grid, .split, .impact-grid, .thank-grid, .vol { grid-template-columns: 1fr; }
+  .scene { width: 100%; max-width: 440px; justify-self: center; margin: 10px auto -10px; }
+  .steps-head { justify-content: flex-start; text-align: left; }
+  .steps { grid-template-columns: 1fr; gap: 26px; }
+  .path { display: none; }
+  .steps::before { content: ""; position: absolute; top: 25px; bottom: 25px; left: 24px; border-left: 2px dashed #E0B680; }
+  .steps li { padding: 6px 0 0 76px; min-height: 50px; }
+  .trust article { grid-template-columns: 1fr; }
+  .foot { grid-template-columns: 1fr; gap: 28px; }
+  .vol-art { max-width: 260px; }
+  .pills { overflow-x: auto; padding-bottom: 4px; }
+  .vlinks { order: 4; width: 100%; margin: 0; }
+  .logo { margin-right: auto; }
+}
+@media (max-width: 560px) {
+  .nav .btn { min-height: 44px; padding: 0 16px; }
+  .logo { margin-right: auto; }
+  .btn.big, .hero .btn.soft { width: 100%; }
+  .hero .ctas .sparks { display: none; }
+  .featured { transform: none; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header>
+  <div class="nav">
+    <a class="logo" href="#" aria-label="1Yard home">
+      <svg width="42" height="34" viewBox="0 0 44 34" aria-hidden="true"><g fill="#4F7A2C"><circle cx="9" cy="11" r="7"/><circle cx="22" cy="8" r="8" fill="#1F4D2B"/><circle cx="35" cy="12" r="6.5"/></g><g stroke="#1F4D2B" stroke-width="2.4" stroke-linecap="round"><path d="M9 17v14M22 15v16M35 18v13"/></g></svg>
+      1Yard
+    </a>
+    <nav class="pills" aria-label="On this page">
+      <a href="#why"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 L19 6 V11 C19 16 16 19 12 21 C8 19 5 16 5 11 V6 Z"/><path d="M9 12 L11 14 L15 10"/></svg>Why trust 1Yard</a>
+      <a href="#how"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18 C14 18 10 6 16 6"/></svg>How 1Yard works</a>
+      <a href="#impact"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20 C5 15 3 11 3 8 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8 C21 11 19 15 12 20 Z"/></svg>Community impact</a>
+    </nav>
+    <div class="vlinks"><a href="#volunteer">Apply to volunteer</a><a href="#">Volunteer log in</a></div>
+    <a class="btn primary" href="../docs/index.html?start=request">Request help <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12 H19 M13 6 L19 12 L13 18"/></svg></a>
+  </div>
+</header>
+
+<main id="main">
+  <!-- HERO · cream -->
+  <section class="hero bg-cream has-wave">
+    <svg class="corner-branch" viewBox="-6 -14 268 104" fill="none" stroke="#4F7A2C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M-4 52 C60 38 130 22 250 6" stroke="#8A6A45" stroke-width="3"/>
+      <path d="M40 44 C34 24 44 12 56 8 C62 26 54 38 40 44 Z" fill="#DCE8CC"/>
+      <path d="M66 39 C78 56 74 74 62 80 C54 64 56 50 66 39 Z" fill="#C9DCB0"/>
+      <path d="M108 30 C102 12 112 0 124 -4 C130 12 122 26 108 30 Z" fill="#DCE8CC"/>
+      <path d="M138 26 C150 42 146 60 134 66 C126 50 128 36 138 26 Z" fill="#DCE8CC"/>
+      <path d="M190 16 C186 2 194 -8 204 -10 C208 4 202 14 190 16 Z" fill="#C9DCB0"/>
+      <path d="M16 48 C24 66 18 82 6 86 C0 70 4 58 16 48 Z" fill="#DCE8CC"/>
+    </svg>
+    <div class="wrap hero-grid">
+      <div>
+        <p class="bubble">Fall 2026 services are now open in Kingston!</p>
+        <h1>Student volunteers helping with outdoor home work, with dignity and <span class="swash">care<svg viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true"><path d="M2 10 C30 4 70 4 98 9" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span></h1>
+        <p class="lead">1Yard is a student-led volunteer organization. We help seniors and people with physical limitations with demanding outdoor tasks. It's free or pay-what-you-can, with no strings attached.</p>
+        <div class="ctas">
+          <svg class="sparks" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M20 4 L24 14 M6 14 L16 19 M4 30 L14 29"/></svg>
+          <a class="btn primary big" href="../docs/index.html?start=request"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20 C4 10 10 4 20 4 C20 14 14 20 4 20 Z"/><path d="M4 20 L14 10"/></svg>Request help <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12 H19 M13 6 L19 12 L13 18"/></svg></a>
+          <a class="btn soft big" href="#thank"><svg class="heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20 C5 15 3 11 3 8 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8 C21 11 19 15 12 20 Z"/></svg>Thank a volunteer</a>
+        </div>
+        <p class="call"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4 H9 L11 9 L8.5 10.5 A11 11 0 0 0 13.5 15.5 L15 13 L20 15 V19 A2 2 0 0 1 18 21 A16 16 0 0 1 3 6 A2 2 0 0 1 5 4 Z"/></svg>Prefer to talk? Call <a href="tel:4164310010">416-431-0010</a> or email <a href="mailto:1yardqueens@gmail.com">1yardqueens@gmail.com</a></p>
+      </div>
+      <!-- Hand-drawn garden scene: shrub, wheelbarrow of leaves, rake -->
+      <svg class="scene" viewBox="0 0 520 440" aria-hidden="true">
+        <path d="M40 372 C110 314 270 296 380 306 C470 314 516 344 516 374 C516 410 420 428 280 428 C140 428 40 410 40 372 Z" fill="#DCE8CC"/>
+        <path d="M70 398 C150 376 330 370 480 390 C500 394 500 414 470 420 C360 434 180 434 96 422 C64 418 58 404 70 398 Z" fill="#C9DCB0"/>
+        <g fill="#A9C784"><circle cx="400" cy="250" r="62"/><circle cx="460" cy="282" r="54"/><circle cx="350" cy="300" r="46"/></g>
+        <g fill="#8DB06A"><circle cx="430" cy="214" r="34"/><circle cx="486" cy="250" r="30"/></g>
+        <g fill="#FFFFFF" stroke="#E6DCC4" stroke-width="2"><circle cx="372" cy="262" r="9"/><circle cx="420" cy="290" r="10"/><circle cx="462" cy="244" r="8"/><circle cx="398" cy="226" r="7"/><circle cx="480" cy="300" r="9"/></g>
+        <path d="M268 120 L330 368" stroke="#8A6A45" stroke-width="5" stroke-linecap="round"/>
+        <g stroke="#536253" stroke-width="3" stroke-linecap="round"><path d="M306 352 L354 364 M310 356 L306 384 M318 358 L318 388 M326 360 L330 390 M334 362 L342 390 M342 364 L354 386"/></g>
+        <path d="M130 300 H270 L250 350 H150 Z" fill="#4F7A2C"/>
+        <path d="M130 300 H270" stroke="#2F5A17" stroke-width="5" stroke-linecap="round"/>
+        <path d="M150 350 L120 380 M250 350 L264 380" stroke="#536253" stroke-width="5" stroke-linecap="round"/>
+        <circle cx="200" cy="372" r="16" fill="#3A3A32"/><circle cx="200" cy="372" r="6" fill="#C9DCB0"/>
+        <path d="M270 300 L310 292" stroke="#8A6A45" stroke-width="5" stroke-linecap="round"/>
+        <path d="M150 300 C150 280 170 270 186 276 C182 292 168 300 150 300 Z" fill="#D9822B"/>
+        <path d="M190 298 C186 276 206 264 222 268 C222 286 208 298 190 298 Z" fill="#C2412D"/>
+        <path d="M226 300 C228 282 246 274 260 282 C254 296 240 302 226 300 Z" fill="#E3A72F"/>
+        <path d="M90 400 C84 386 94 376 106 378 C108 392 100 400 90 400 Z" fill="#D9822B"/>
+        <path d="M290 412 C292 398 306 392 316 398 C312 410 302 414 290 412 Z" fill="#C2412D"/>
+        <path d="M60 418 C58 406 70 400 80 404 C78 416 70 420 60 418 Z" fill="#E3A72F"/>
+      </svg>
+    </div>
+    <svg class="wave" viewBox="0 0 1440 70" preserveAspectRatio="none" aria-hidden="true"><path d="M0 40 C240 0 480 70 760 36 C1020 6 1240 52 1440 24 V70 H0 Z" fill="#EEF3E6"/></svg>
+  </section>
+
+  <!-- SERVICES · sage -->
+  <section class="svc-band has-wave" aria-labelledby="svc-title">
+    <div class="wrap">
+      <div class="svc-row">
+        <h2 class="svc-title" id="svc-title">This fall, we can help with</h2>
+        <ul class="svc">
+          <li><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M10 38 C10 20 22 10 38 10 C38 26 28 38 10 38 Z"/><path d="M10 38 L30 18"/></svg>Raking leaves</li>
+          <li><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 44 V22"/><path d="M24 30 C24 22 30 16 38 16 C38 24 32 30 24 30 Z"/><path d="M24 26 C24 18 18 12 10 12 C10 20 16 26 24 26 Z"/></svg>Garden bed clean-up</li>
+          <li><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M6 40 H42"/><path d="M12 40 C12 30 10 24 8 20 M18 40 C18 28 20 22 24 16 M26 40 C26 30 28 26 32 22 M34 40 C34 32 36 28 40 26"/></svg>The last lawn mow</li>
+          <li><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M6 34 L42 18"/><path d="M20 28 L16 16 M30 24 L34 12 M26 26 L30 36"/></svg>Branches and yard debris</li>
+        </ul>
+      </div>
+      <p class="svc-note">Two volunteers come together. They bring gloves and use your tools. We only work outside.</p>
+    </div>
+    <svg class="wave" viewBox="0 0 1440 70" preserveAspectRatio="none" aria-hidden="true"><path d="M0 30 C300 64 560 4 860 28 C1120 48 1300 14 1440 34 V70 H0 Z" fill="#FFFFFF"/></svg>
+  </section>
+
+  <!-- WHY TRUST · white -->
+  <section class="bg-white has-wave" id="why">
+    <div class="wrap split">
+      <div>
+        <span class="tag green"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 L19 6 V11 C19 16 16 19 12 21 C8 19 5 16 5 11 V6 Z"/><path d="M9 12 L11 14 L15 10"/></svg>Why trust 1Yard</span>
+        <h2>We exist to extend <span class="swash">care<svg viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true"><path d="M2 10 C30 4 70 4 98 9" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span>, not just complete tasks.</h2>
+        <p class="pull">Our volunteers step in as an extension of our clients' capacity when aging, illness, or mobility makes everyday tasks difficult.</p>
+        <svg class="sprig" viewBox="0 0 120 60" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M6 52 C40 46 76 30 112 8"/>
+          <path d="M40 44 C36 30 44 22 54 20 C56 32 50 40 40 44 Z" fill="#DCE8CC"/>
+          <path d="M66 34 C74 46 70 56 60 58 C56 48 58 40 66 34 Z" fill="#DCE8CC"/>
+          <path d="M88 22 C86 10 94 2 104 2 C104 12 98 20 88 22 Z" fill="#C9DCB0"/>
+        </svg>
+      </div>
+      <div class="trust">
+        <article><h3>Dignity first</h3><p>We treat clients as partners and decision-makers when they work with our volunteers.</p></article>
+        <article><h3>Safety first</h3><p>Volunteers always work in pairs and are trained in task safety before their first job.</p></article>
+        <article><h3>No financial barriers</h3><p>Free or pay-what-you-can, with no proof of income required. No one is turned away.</p></article>
+        <article><h3>Local</h3><p>Students from Kingston's high schools and universities, helping their neighbours.</p></article>
+      </div>
+    </div>
+    <svg class="wave" viewBox="0 0 1440 70" preserveAspectRatio="none" aria-hidden="true"><path d="M0 26 C220 56 520 50 780 22 C1040 -2 1260 30 1440 46 V70 H0 Z" fill="#EEF3E6"/></svg>
+  </section>
+
+  <!-- HOW 1YARD WORKS · sage -->
+  <section class="bg-sage has-wave" id="how">
+    <div class="wrap">
+      <div class="steps-head"><div>
+        <span class="tag orange"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18 C14 18 10 6 16 6"/></svg>How 1Yard works</span>
+        <h2>Getting help is <span class="swash orange">simple<svg viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true"><path d="M2 10 C30 4 70 4 98 9" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span></h2>
+      </div></div>
+      <div class="steps-wrap" style="position:relative;margin-top:48px">
+        <svg class="path" viewBox="0 0 900 48" preserveAspectRatio="none" aria-hidden="true"><path d="M0 25 C120 4 220 46 300 25 C380 4 480 46 600 25 C700 8 800 42 900 25" fill="none" stroke="currentColor" stroke-width="2.5" stroke-dasharray="7 9" stroke-linecap="round"/></svg>
+        <ol class="steps">
+          <li><h3>Reach out</h3><p>Request help on our website, or give us a call.</p></li>
+          <li><h3>Tell us what you need</h3><p>We'll ask about your address, the work, and a few days that suit you.</p></li>
+          <li><h3>We find two volunteers</h3><p>They pick a time on one of your days, and we let you know.</p></li>
+          <li><h3>We show up and do the work</h3><span class="hand">That's it!</span></li>
+        </ol>
+      </div>
+      <p class="cost"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20 C4 10 10 4 20 4 C20 14 14 20 4 20 Z"/><path d="M4 20 L14 10"/></svg><span>Services are <b>free or pay-what-you-can</b>. No one is turned away due to inability to pay.</span></p>
+    </div>
+    <svg class="wave" viewBox="0 0 1440 70" preserveAspectRatio="none" aria-hidden="true"><path d="M0 36 C260 8 520 60 800 34 C1060 10 1280 50 1440 28 V70 H0 Z" fill="#FAF6EC"/></svg>
+  </section>
+
+  <!-- IMPACT · cream -->
+  <section class="bg-cream has-wave" id="impact">
+    <div class="wrap impact-grid">
+      <div>
+        <span class="tag red"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20 C5 15 3 11 3 8 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8 C21 11 19 15 12 20 Z"/></svg>Community impact</span>
+        <div><p class="bignum">$17,000+<svg class="sparks" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M20 4 L16 14 M34 14 L24 19 M36 30 L26 29"/></svg></p></div>
+        <p class="big-sub">raised for the Princess Margaret Cancer Foundation since 2021, thanks to community generosity.</p>
+        <a class="btn soft donate" href="https://supportthepmcf.ca/ui/PDPCelebrate/p/231bd88823ca45efa285b5439d21e30d" target="_blank" rel="noopener"><svg class="heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20 C5 15 3 11 3 8 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8 C21 11 19 15 12 20 Z"/></svg>See our donation page <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 L17 7 M9 7 H17 V15"/></svg></a>
+        <ul class="facts">
+          <li>100% of donations go to Princess Margaret.</li>
+          <li>No money goes to volunteers or organizers.</li>
+          <li>Volunteers will never ask for or accept payment directly.</li>
+        </ul>
+      </div>
+      <div class="featured">
+        <p class="hand">Featured by</p>
+        <p><a href="https://globalnews.ca/video/10064957/young-man-honours-late-mother-by-starting-student-led-volunteer-organization" target="_blank" rel="noopener">Global News</a> and the <a href="https://torontoguardian.com/2023/08/toronto-charity-1yard/" target="_blank" rel="noopener">Toronto Guardian</a></p>
+      </div>
+    </div>
+    <svg class="wave" viewBox="0 0 1440 70" preserveAspectRatio="none" aria-hidden="true"><path d="M0 22 C280 52 540 6 820 30 C1080 52 1280 12 1440 30 V70 H0 Z" fill="#EEF3E6"/></svg>
+  </section>
+
+  <!-- THANK A VOLUNTEER · sage -->
+  <section class="bg-sage has-wave" id="thank">
+    <div class="wrap thank-grid">
+      <div>
+        <span class="tag red"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20 C5 15 3 11 3 8 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8 C21 11 19 15 12 20 Z"/></svg>Thank a volunteer</span>
+        <h2>Did our volunteers help <span class="swash red">you?<svg viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true"><path d="M2 10 C30 4 70 4 98 9" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span></h2>
+        <p style="margin-top:18px">Leave a short note and we'll pass it on. It means a lot to the students who came by.</p>
+      </div>
+      <form class="thank-card" onsubmit="return false">
+        <svg class="sparks" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M20 4 L16 14 M34 14 L24 19 M36 30 L26 29"/></svg>
+        <div><label for="t-name">Your name</label><input id="t-name" autocomplete="name"></div>
+        <div><label for="t-where">Your street or phone number <span class="opt">(so we know which visit)</span></label><input id="t-where"></div>
+        <div><label for="t-msg">Your message <span class="opt">(optional)</span></label><textarea id="t-msg" placeholder="e.g. Thank you, the yard looks wonderful!"></textarea></div>
+        <div><button class="btn primary big" type="submit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20 C5 15 3 11 3 8 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8 C21 11 19 15 12 20 Z"/></svg>Send thanks</button></div>
+      </form>
+    </div>
+    <svg class="wave" viewBox="0 0 1440 70" preserveAspectRatio="none" aria-hidden="true"><path d="M0 40 C300 10 600 58 900 30 C1140 8 1300 40 1440 26 V70 H0 Z" fill="#FFFFFF"/></svg>
+  </section>
+
+  <!-- VOLUNTEER · white -->
+  <section class="bg-white has-wave" id="volunteer">
+    <div class="wrap vol">
+      <svg class="vol-art" viewBox="0 0 300 240" aria-hidden="true">
+        <path d="M20 210 C70 180 230 176 286 206 C290 222 250 232 150 232 C60 232 16 226 20 210 Z" fill="#DCE8CC"/>
+        <path d="M92 214 L196 44" stroke="#8A6A45" stroke-width="5" stroke-linecap="round"/>
+        <g stroke="#536253" stroke-width="3" stroke-linecap="round" fill="none"><path d="M172 30 L222 60 M176 34 L168 52 M188 40 L180 60 M200 48 L192 68 M212 54 L204 74"/></g>
+        <path d="M120 212 C106 200 106 184 118 176 C128 188 130 202 120 212 Z" fill="#D9822B"/>
+        <path d="M152 218 C162 202 180 198 190 206 C182 218 166 222 152 218 Z" fill="#C2412D"/>
+        <path d="M210 206 C206 190 216 178 230 178 C232 194 222 204 210 206 Z" fill="#E3A72F"/>
+        <path d="M54 206 C50 190 60 178 74 178 C76 194 66 204 54 206 Z" fill="#A9C784"/>
+        <path d="M244 214 C250 200 266 196 276 202 C270 214 256 218 244 214 Z" fill="#D9822B"/>
+        <g fill="none" stroke="#E3A72F" stroke-width="3" stroke-linecap="round"><path d="M236 24 L240 36 M256 32 L246 40 M260 52 L248 52"/></g>
+      </svg>
+      <div>
+        <span class="tag green"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20 C4 10 10 4 20 4 C20 14 14 20 4 20 Z"/><path d="M4 20 L14 10"/></svg>Volunteer</span>
+        <h2>High school or university student? Volunteer with <span class="swash">1Yard.<svg viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true"><path d="M2 10 C30 4 70 4 98 9" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span></h2>
+        <p style="margin-top:18px">Help neighbours with yard work around your classes. You pick the jobs and times, always with a partner. Your first two jobs are alongside an experienced volunteer.</p>
+        <div class="ctas"><a class="btn primary big" href="#">Apply to volunteer <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12 H19 M13 6 L19 12 L13 18"/></svg></a><a class="btn soft" href="#">Volunteer log in</a></div>
+      </div>
+    </div>
+    <svg class="wave" viewBox="0 0 1440 70" preserveAspectRatio="none" aria-hidden="true"><path d="M0 30 C240 60 520 10 800 32 C1060 52 1260 16 1440 36 V70 H0 Z" fill="#1F4D2B"/></svg>
+  </section>
+</main>
+
+<footer>
+  <svg class="foot-leaves" viewBox="0 0 220 200" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <path d="M30 190 C70 150 120 120 210 104"/>
+    <path d="M80 152 C70 120 84 98 104 92 C110 120 100 142 80 152 Z"/>
+    <path d="M128 126 C124 96 140 76 162 74 C164 102 150 120 128 126 Z"/>
+    <path d="M110 140 C138 140 156 154 160 172 C134 176 116 162 110 140 Z"/>
+  </svg>
+  <div class="wrap foot">
+    <div>
+      <p class="logo" style="color:#fff">1Yard</p>
+      <p style="margin-top:8px">Student volunteers providing essential outdoor home services in Kingston, with dignity and care.</p>
+    </div>
+    <div>
+      <h3>Contact us</h3>
+      <ul><li>Phone: <a href="tel:4164310010">416-431-0010</a></li><li>Email: <a href="mailto:1yardqueens@gmail.com">1yardqueens@gmail.com</a></li><li>Instagram: @1yard.ca</li><li>Nextdoor: search @1Yard</li></ul>
+    </div>
+    <div>
+      <h3>On this page</h3>
+      <ul><li><a href="../docs/index.html?start=request">Request help</a></li><li><a href="#why">Why trust 1Yard</a></li><li><a href="#how">How 1Yard works</a></li><li><a href="#impact">Community impact</a></li><li><a href="#thank">Thank a volunteer</a></li><li><a href="#volunteer">Volunteer</a></li></ul>
+    </div>
+  </div>
+  <p class="wrap fine">We are not a business and we are not paid contractors. 100% of donations go to the Princess Margaret Cancer Foundation.</p>
+</footer>
+</body>
+</html>
