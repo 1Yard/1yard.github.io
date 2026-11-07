@@ -171,7 +171,19 @@ create table if not exists public.thanks (
   created_at   timestamptz not null default now(),
   reviewed_at  timestamptz
 );
-create unique index if not exists one_client_thanks_per_job on public.thanks (job_id) where from_client;
+-- Thank-yous from the homepage may not be tied to a job until an admin matches one.
+alter table public.thanks alter column job_id drop not null;
+alter table public.thanks add column if not exists source text not null default 'request';   -- request | public | admin
+alter table public.thanks add column if not exists from_name text not null default '';
+alter table public.thanks add column if not exists contact text not null default '';
+alter table public.thanks add column if not exists volunteer_names text not null default '';
+alter table public.thanks add column if not exists suggested_job uuid references public.jobs(id) on delete set null;
+-- Shared with every volunteer on the thank-you wall. Thank-yous approved before this
+-- existed were already on the wall, so they start as shout-outs.
+alter table public.thanks add column if not exists shoutout boolean not null default true;
+alter table public.thanks alter column shoutout set default false;
+drop index if exists public.one_client_thanks_per_job;
+create unique index if not exists one_client_thanks_per_job on public.thanks (job_id) where from_client and source = 'request';
 
 -- Admin call notes on a request/job (the same row, so they carry over when it's published).
 create table if not exists public.admin_notes (
@@ -507,6 +519,10 @@ begin
     'levels', coalesce((select jsonb_agg(jsonb_build_object('level', e.level, 'at', e.created_at) order by e.created_at)
                         from level_events e where e.volunteer_id = me.id), '[]'),
     -- Completed jobs and hours, for the volunteer's own record (e.g. school service hours).
+    'my_thanks', coalesce((select jsonb_agg(jsonb_build_object('message', t.message, 'created_at', t.created_at,
+        'job', svc_names(j.services), 'date', j.date) order by t.created_at desc)
+      from thanks t join jobs j on j.id = t.job_id join job_signups s on s.job_id = j.id
+      where s.volunteer_id = me.id and t.status = 'approved'), '[]'),
     'history', coalesce((
       select jsonb_agg(jsonb_build_object('id', j.id, 'date', j.date, 'services', j.services,
                'area', c.area, 'hours', coalesce(j.actual_hours, j.hours)) order by j.date desc)
@@ -787,7 +803,7 @@ language sql stable security definer set search_path = public as $$
     'date', j.date, 'start_time', j.start_time, 'created_at', j.created_at,
     'needs_new_dates', needs_new_dates(j),
     'crewed', j.crewed_at is not null,
-    'thanked', exists (select 1 from thanks t where t.job_id = j.id and t.from_client),
+    'thanked', exists (select 1 from thanks t where t.job_id = j.id and t.from_client and t.source = 'request'),
     'crew', coalesce((select jsonb_agg(split_part(p.name, ' ', 1) order by s.created_at)
                       from job_signups s join profiles p on p.id = s.volunteer_id where s.job_id = j.id), '[]'))
   from jobs j join clients c on c.id = j.client_id
@@ -1186,34 +1202,80 @@ begin
         'phone', case when p.share_phone then p.phone end, 'email', case when p.share_email then p.email end,
         'stats', vol_stats(p.id)) order by level_rank(p.level) desc, p.name)
       from profiles p where p.status in ('trainee', 'experienced') and p.role = 'volunteer'), '[]'),
+    -- The shout-out wall: thank-yous an admin chose to share with every volunteer.
     'thanks', coalesce((select jsonb_agg(jsonb_build_object(
-        'id', t.id, 'message', t.message, 'created_at', t.created_at, 'job', svc_names(j.services), 'date', j.date, 'area', c.area,
+        'id', t.id, 'message', t.message, 'created_at', t.created_at, 'job', case when j.id is not null then svc_names(j.services) end,
+        'date', j.date, 'area', c.area,
         'crew', (select jsonb_agg(p.name order by s.created_at) from job_signups s join profiles p on p.id = s.volunteer_id where s.job_id = j.id))
         order by t.created_at desc)
-      from (select * from thanks where status = 'approved' order by created_at desc limit 50) t
-      join jobs j on j.id = t.job_id join clients c on c.id = j.client_id), '[]'));
+      from (select * from thanks where status = 'approved' and shoutout order by created_at desc limit 50) t
+      left join jobs j on j.id = t.job_id left join clients c on c.id = j.client_id), '[]'));
 end $$;
 
--- Client says thanks from their private link (once per job). A message waits for an
--- admin; a plain thank-you counts and shows right away.
+-- Client says thanks from their private link (once per job). A plain thank-you counts
+-- for the crew straight away; a message waits for an admin.
 create or replace function public.thank_crew(tok uuid, p_message text default null) returns void
 language plpgsql security definer set search_path = public as $$
 declare j jobs; msg text := left(trim(coalesce(p_message, '')), 500);
 begin
   select * into j from jobs where access_token = tok;
   if j.id is null or j.status <> 'done' then raise exception 'You can say thanks once the job is done'; end if;
-  if exists (select 1 from thanks where job_id = j.id and from_client) then raise exception 'You already thanked this crew. Thank you!'; end if;
-  insert into thanks (job_id, message, from_client, status) values (j.id, msg, true, case when msg = '' then 'approved' else 'pending' end);
+  if exists (select 1 from thanks where job_id = j.id and from_client and source = 'request') then raise exception 'You already thanked this crew. Thank you!'; end if;
+  insert into thanks (job_id, message, from_client, source, status, shoutout)
+  values (j.id, msg, true, 'request', case when msg = '' then 'approved' else 'pending' end, false);
 end $$;
 
--- Admin logs a thank-you a client gave by phone (approved right away).
-create or replace function public.admin_add_thanks(p_job uuid, p_message text) returns void
+-- Anyone can thank volunteers from the homepage. It waits for an admin, who matches
+-- it to a job (we suggest one from the phone number or street) and/or shares it.
+create or replace function public.submit_thanks(p jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v_name text := left(trim(coalesce(p->>'name', '')), 120);
+  v_contact text := left(trim(coalesce(p->>'contact', '')), 200);
+  v_vols text := left(trim(coalesce(p->>'volunteers', '')), 200);
+  v_msg text := left(trim(coalesce(p->>'message', '')), 800);
+  v_digits text := regexp_replace(coalesce(p->>'contact', ''), '\D', '', 'g');
+  v_job uuid;
+begin
+  if v_name = '' then raise exception 'Please type your name'; end if;
+  if v_contact = '' then raise exception 'Please type your street or phone number, so we know which visit it was'; end if;
+  if v_msg = '' and v_vols = '' then raise exception 'Please write a few words for the volunteers'; end if;
+  -- Light protection against floods of junk.
+  if (select count(*) from thanks where source = 'public' and created_at > now() - interval '10 minutes') >= 20 then
+    raise exception 'Lots of thank-yous are coming in right now. Please try again in a few minutes.';
+  end if;
+  select j.id into v_job from jobs j join clients c on c.id = j.client_id
+  where j.status = 'done'
+    and ((length(v_digits) >= 10 and c.phone_key = v_digits)
+      or (length(v_contact) >= 5 and v_contact ~ '[A-Za-z]' and lower(c.address) like '%' || lower(v_contact) || '%'))
+  order by j.date desc nulls last limit 1;
+  insert into thanks (job_id, suggested_job, message, from_client, source, status, shoutout, from_name, contact, volunteer_names)
+  values (null, v_job, v_msg, true, 'public', 'pending', false, v_name, v_contact, v_vols);
+end $$;
+
+-- Admin logs a thank-you a client gave by phone or email (approved right away).
+drop function if exists public.admin_add_thanks(uuid, text);
+create or replace function public.admin_add_thanks(p_job uuid, p_message text, p_shoutout boolean default false) returns void
 language plpgsql security definer set search_path = public as $$
 begin
   if not is_admin() then raise exception 'Admins only'; end if;
-  if not exists (select 1 from jobs where id = p_job and status = 'done') then raise exception 'Only finished jobs can be thanked'; end if;
-  insert into thanks (job_id, message, from_client, status, logged_by, reviewed_at)
-  values (p_job, left(trim(coalesce(p_message, '')), 500), false, 'approved', auth.uid(), now());
+  if p_job is null and not coalesce(p_shoutout, false) then raise exception 'Pick the job, or share it as a shout-out'; end if;
+  if p_job is not null and not exists (select 1 from jobs where id = p_job and status = 'done') then raise exception 'Only finished jobs can be thanked'; end if;
+  insert into thanks (job_id, message, from_client, source, status, shoutout, logged_by, reviewed_at)
+  values (p_job, left(trim(coalesce(p_message, '')), 800), false, 'admin', 'approved', coalesce(p_shoutout, false), auth.uid(), now());
+end $$;
+
+-- Admin decides where a thank-you goes:
+--   p_job      → counts for the volunteers on that job (and they're told), and/or
+--   p_shoutout → shown to every volunteer on the thank-you wall.
+create or replace function public.admin_publish_thanks(p_id uuid, p_job uuid, p_shoutout boolean) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_admin() then raise exception 'Admins only'; end if;
+  if p_job is null and not coalesce(p_shoutout, false) then raise exception 'Pick the job, or share it as a shout-out'; end if;
+  if p_job is not null and not exists (select 1 from jobs where id = p_job and status = 'done') then raise exception 'Only finished jobs can be thanked'; end if;
+  update thanks set job_id = p_job, shoutout = coalesce(p_shoutout, false), status = 'approved', reviewed_at = now() where id = p_id;
+  if not found then raise exception 'That thank-you is gone'; end if;
 end $$;
 
 create or replace function public.admin_review_thanks(p_id uuid, p_status text) returns void
@@ -1224,26 +1286,35 @@ begin
   update thanks set status = p_status, reviewed_at = now() where id = p_id;
 end $$;
 
--- Thank-you messages: tell admins when one needs a look; tell the crew once it counts/shows.
+-- Thank-yous: tell admins when one needs a look; tell the crew when it's credited to
+-- them; tell every volunteer when it's shared as a shout-out.
 create or replace function public.trg_thanks() returns trigger
 language plpgsql security definer set search_path = public as $$
-declare j jobs; c clients; v uuid;
+declare j jobs; c clients; v uuid; quote text;
 begin
   select * into j from jobs where id = new.job_id; select * into c from clients where id = j.client_id;
+  quote := case when new.message <> '' then ': "' || left(new.message, 200) || '"' else '.' end;
   if tg_op = 'INSERT' and new.status = 'pending' then
-    perform notify_admins('thanks_review', j.id, first_name(c.name) || ' sent a thank-you message for ' || lower(svc_names(j.services)) || '. Approve it so the volunteers see it.',
+    perform notify_admins('thanks_review', j.id,
+      case when j.id is not null then first_name(c.name) || ' sent a thank-you message for ' || lower(svc_names(j.services)) || '.'
+           else first_name(new.from_name) || ' sent a thank-you from the website.' end || ' Choose who it goes to.',
       'thanks', false, 'thanks:' || new.id);
   end if;
-  if new.status = 'approved' and (tg_op = 'INSERT' or old.status <> 'approved') then
+  if new.status = 'approved' and j.id is not null then
     for v in select volunteer_id from job_signups where job_id = j.id and volunteer_id is not null loop
-      perform notify(v, 'thanks', j.id, '❤️ A client in ' || c.area || ' thanked you for ' || lower(svc_names(j.services))
-        || case when new.message <> '' then ': "' || left(new.message, 200) || '"' else '.' end, 'vcommunity', false, 'thanked:' || new.id || ':' || v);
+      perform notify(v, 'thanks', j.id, '❤️ A client in ' || c.area || ' thanked you for ' || lower(svc_names(j.services)) || quote,
+        'vrecord', false, 'thanked:' || new.id || ':' || v);
+    end loop;
+  end if;
+  if new.status = 'approved' and new.shoutout then
+    for v in select id from profiles where role = 'volunteer' and status in ('trainee', 'experienced') loop
+      perform notify(v, 'shoutout', j.id, '❤️ Shout-out from a client' || quote, 'vcommunity', false, 'shout:' || new.id || ':' || v);
     end loop;
   end if;
   return null;
 end $$;
 drop trigger if exists thanks_events on public.thanks;
-create trigger thanks_events after insert or update of status on public.thanks for each row execute function public.trg_thanks();
+create trigger thanks_events after insert or update of status, job_id, shoutout on public.thanks for each row execute function public.trg_thanks();
 
 -- ---------- Explicit access grants ----------------------------------
 -- Works whether or not "Automatically expose new tables" is on. RLS above
@@ -1260,14 +1331,15 @@ revoke all on public.notifications, public.job_reports, public.email_outbox, pub
 
 -- Functions the website calls. Clients (not logged in) only get these four.
 grant execute on function public.submit_request(jsonb), public.get_request(uuid),
-  public.cancel_request(uuid), public.thank_crew(uuid, text), public.ping() to anon, authenticated;
+  public.cancel_request(uuid), public.thank_crew(uuid, text), public.submit_thanks(jsonb), public.ping() to anon, authenticated;
 grant execute on function public.volunteer_board(), public.join_job(uuid, date, text),
   public.change_my_time(uuid, date, text), public.leave_job(uuid, text), public.finish_job(uuid, numeric, text, text, text),
   public.complete_training(text, boolean), public.admin_remove_volunteer(uuid),
   public.mark_notifications_read(uuid[]), public.add_admin_note(uuid, text),
   public.admin_set_password(uuid, text), public.password_changed(),
   public.update_my_prefs(boolean, boolean, boolean), public.volunteer_directory(),
-  public.admin_add_thanks(uuid, text), public.admin_review_thanks(uuid, text) to authenticated;
+  public.admin_add_thanks(uuid, text, boolean), public.admin_review_thanks(uuid, text),
+  public.admin_publish_thanks(uuid, uuid, boolean) to authenticated;
 -- Postgres lets everyone run new functions by default; logged-out visitors don't need these.
 revoke execute on function public.volunteer_board(), public.join_job(uuid, date, text),
   public.change_my_time(uuid, date, text), public.leave_job(uuid, text), public.finish_job(uuid, numeric, text, text, text),
@@ -1275,7 +1347,8 @@ revoke execute on function public.volunteer_board(), public.join_job(uuid, date,
   public.mark_notifications_read(uuid[]), public.add_admin_note(uuid, text),
   public.admin_set_password(uuid, text), public.password_changed(),
   public.update_my_prefs(boolean, boolean, boolean), public.volunteer_directory(),
-  public.admin_add_thanks(uuid, text), public.admin_review_thanks(uuid, text) from public, anon;
+  public.admin_add_thanks(uuid, text, boolean), public.admin_review_thanks(uuid, text),
+  public.admin_publish_thanks(uuid, uuid, boolean) from public, anon;
 
 -- Internal helpers shouldn't be callable from the website.
 revoke execute on function public.handle_new_user(), public.trg_profile_new(), public.trg_profile_status(),

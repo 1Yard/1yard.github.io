@@ -175,7 +175,7 @@ async function loadBoard() {
   if (!canSeeBoard(S.me)) return;
   const data = must(await sb.rpc("volunteer_board"));
   S.myShadow = data.shadow_count; S.history = data.history || [];
-  S.stats = data.stats || null; S.levelHistory = data.levels || []; S.levelRules = data.level_rules || null;
+  S.stats = data.stats || null; S.levelHistory = data.levels || []; S.levelRules = data.level_rules || null; S.myThanks = data.my_thanks || [];
   for (const b of data.jobs) {
     const cid = "c-" + b.id;
     S.clients.push({ id: cid, name: b.client_name || "", phone: b.client_phone || "", address: b.address || "", postal: b.postal || "", area: b.area });
@@ -523,16 +523,19 @@ function homeView() {
         <div>
           <span class="tag red"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20 C5 15 3 11 3 8 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8 C21 11 19 15 12 20 Z"/></svg>Thank a volunteer</span>
           <h2>Did our volunteers help <span class="swash red">you?<svg viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true"><path d="M2 10 C30 4 70 4 98 9" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span></h2>
-          <p style="margin-top:18px">A few kind words mean a lot to the students who came by.</p>
+          <p style="margin-top:18px">Leave a short note and we'll pass it on. It means a lot to the students who came by.</p>
+          ${saved.length ? `<p style="margin-top:14px" class="opt">Already asked for help on this device? You can also say thanks from <button class="linkbtn" data-act="openRequest" data-id="${esc(saved[0])}">your request page</button>.</p>` : ""}
         </div>
         <div class="thank-card">
           <svg class="sparks" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M20 4 L16 14 M34 14 L24 19 M36 30 L26 29"/></svg>
-          ${saved.length ? `<h3>Send thanks from your request page</h3>
-          <p>Open your request and tap <b>Send thanks</b>. You can add a short message for the volunteers.</p>
-          <div><button class="btn primary big" data-act="openRequest" data-id="${esc(saved[0])}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20 C5 15 3 11 3 8 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8 C21 11 19 15 12 20 Z"/></svg>Open my request</button></div>
-          <p class="opt">Or tell us by phone or email:</p>` : `<h3>Tell us, and we'll pass it on</h3>
-          <p>Give us a call or send an email with your name and street, and a few words for the volunteers.</p>`}
-          <p class="call"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4 H9 L11 9 L8.5 10.5 A11 11 0 0 0 13.5 15.5 L15 13 L20 15 V19 A2 2 0 0 1 18 21 A16 16 0 0 1 3 6 A2 2 0 0 1 5 4 Z"/></svg><a href="tel:4164310010">416-431-0010</a> or <a href="mailto:1yardqueens@gmail.com?subject=Thank%20you%20to%20our%201Yard%20volunteers">1yardqueens@gmail.com</a></p>
+          ${S.thanksSent ? `<h3>Thank you! ❤️</h3><p>We'll pass your note on to the volunteers. It will mean a lot to them.</p>
+          <div><button class="btn soft" data-act="thanksAgain">Send another</button></div>` : `
+          <div><label for="t-name">Your name</label><input id="t-name" autocomplete="name"></div>
+          <div><label for="t-where">Your street or phone number <span class="opt">(so we know which visit)</span></label><input id="t-where" autocomplete="street-address"></div>
+          <div><label for="t-vols">Volunteers' names <span class="opt">(if you remember them)</span></label><input id="t-vols"></div>
+          <div><label for="t-msg">Your message</label><textarea id="t-msg" placeholder="e.g. Thank you, the yard looks wonderful!"></textarea></div>
+          <p class="err" id="t-err" hidden></p>
+          <div><button class="btn primary big" data-act="sendThanks"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20 C5 15 3 11 3 8 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8 C21 11 19 15 12 20 Z"/></svg>Send thanks</button></div>`}
         </div>
       </div>
       <svg class="wave" viewBox="0 0 1440 70" preserveAspectRatio="none" aria-hidden="true"><path d="M0 40 C300 10 600 58 900 30 C1140 8 1300 40 1440 26 V70 H0 Z" fill="#FFFFFF"/></svg>
@@ -786,7 +789,7 @@ function communityView() {
     <h2>❤️ Thank-yous from clients</h2>
     ${d.thanks.length ? `<div class="thanks-wall">${d.thanks.map((t) => `<article class="card thank">
       ${t.message ? `<p class="tmsg">“${esc(t.message)}”</p>` : `<p class="tmsg">A client said thank you ❤️</p>`}
-      <p class="small muted">${esc((t.crew || []).map(first).join(" and "))} · ${esc(t.job)}${t.area ? ` · ${esc(t.area)}` : ""}${t.date ? ` · ${fmtDate(t.date)}` : ""}</p></article>`).join("")}</div>`
+      <p class="small muted">${t.job ? `${esc((t.crew || []).map(first).join(" and "))} · ${esc(t.job)}${t.area ? ` · ${esc(t.area)}` : ""}${t.date ? ` · ${fmtDate(t.date)}` : ""}` : "To all our volunteers"}</p></article>`).join("")}</div>`
       : `<div class="empty">No thank-yous yet. When clients say thanks, they'll show up here.</div>`}
   </section>
   <section class="stack">
@@ -827,6 +830,7 @@ function recordView(v) {
     ${stat("s-sky", ic("clock"), fmtHours(+st.hours), "Hours volunteered")}${stat("s-green", ic("leaf"), st.jobs, "Jobs completed")}
     ${stat("s-lilac", ic("users"), st.supervised, "Trainee shifts supervised")}${stat("s-peach", "❤️", st.thanks, "Thank-yous from clients")}
   </div>
+  ${(S.myThanks || []).length ? `<section class="card stack"><h2>❤️ Thank-yous for you</h2><div class="list">${S.myThanks.map((t) => `<div class="quote">${t.message ? `“${esc(t.message)}”` : "A client said thank you."}<div class="small muted" style="margin-top:4px">${esc(t.job)}${t.date ? ` · ${fmtDate(t.date)}` : ""}</div></div>`).join("")}</div></section>` : ""}
   ${S.levelHistory.length ? `<section class="card stack"><h2>Milestones</h2><ul class="wins">${S.levelHistory.map((e) => `<li>${LEVELS[e.level]?.em || ""} <b>${LEVELS[e.level]?.name || esc(e.level)}</b> · ${fmtDate(e.at.slice(0, 10))}</li>`).join("")}</ul></section>` : ""}
   ${S.history.length ? `<div class="card table-wrap"><table>
     <thead><tr><th>Date</th><th>Work</th><th>Neighbourhood</th><th>Hours</th></tr></thead>
@@ -1152,20 +1156,38 @@ const LEVEL_PICK = [["pending", "Waiting for review"], ["approved", "Approved ·
 const levelOptions = (v) => { const cur = canSeeBoard(v) ? levelOf(v) : v.status; return LEVEL_PICK.map(([k, n]) => `<option value="${k}" ${k === cur ? "selected" : ""}>${n}</option>`).join(""); };
 const supervisedCount = (vid) => S.signups.filter((s) => s.vid === vid && !s.asTrainee && job(s.jobId)?.status === "done" && S.signups.some((p) => p.jobId === s.jobId && p.vid !== vid && p.asTrainee)).length;
 const thanksFor = (vid) => S.thanks.filter((t) => t.status !== "hidden" && S.signups.some((s) => s.jobId === t.job_id && s.vid === vid)).length;
+// Where a thank-you goes: credited to the volunteers on a job (counts for them), and/or
+// shared as a shout-out on every volunteer's thank-you wall.
 function thanksView() {
   const done = S.jobs.filter((j) => j.status === "done").sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-  const card = (t) => { const j = job(t.job_id), c = j && client(j.clientId), names = j ? crew(j.id).map((s) => first(vol(s.vid)?.name || "a volunteer")) : [];
-    return `<article class="card split"><div class="stack" style="gap:6px">
-      <div class="row">${t.status === "pending" ? `<span class="chip c-amber">Waiting for approval</span>` : t.status === "approved" ? `<span class="chip c-green">Shown to volunteers</span>` : `<span class="chip c-grey">Hidden</span>`}
-        <span class="small muted">${t.from_client ? "From the client's page" : "Logged by an admin"} · ${whenShort(t.created_at)}</span></div>
-      <p>${t.message ? `“${esc(t.message)}”` : `<span class="muted">No message, just a thank-you</span>`}</p>
-      <p class="small muted">${j ? `${esc(jobTitle(j))} · ${esc(c?.name || "")} · ${j.date ? fmtDate(j.date) : ""} · for ${esc(names.join(" and "))}` : ""}</p></div>
-      <div class="stack" style="gap:8px">${t.status !== "approved" ? `<button class="btn" data-act="thanksOk" data-id="${t.id}">Approve</button>` : ""}${t.status !== "hidden" ? `<button class="btn ghost" data-act="thanksHide" data-id="${t.id}">Hide</button>` : ""}</div></article>`; };
-  return `<p class="small muted">Thank-yous count for every volunteer on the job straight away. Messages show on the volunteers' thank-you wall once you approve them. Hide anything inappropriate.</p>
-    <section class="card stack"><h3>Log a thank-you from a phone call</h3>
-      <div class="row"><select class="in" id="ty-job" style="min-width:240px">${done.map((j) => `<option value="${j.id}">${j.date ? fmtDate(j.date) + " · " : ""}${esc(client(j.clientId).name)} · ${esc(jobTitle(j))}</option>`).join("")}</select>
-      <input type="text" class="in" id="ty-note" placeholder="What they said (optional)" style="flex:1;min-width:200px"><button class="btn" data-act="thanksLog" ${done.length ? "" : "disabled"}>Add thank-you</button></div></section>
-    ${S.thanks.length ? `<div class="list">${S.thanks.map(card).join("")}</div>` : `<div class="empty">No thank-yous yet.</div>`}`;
+  const jobLabel = (j) => `${j.date ? fmtDate(j.date) + " · " : ""}${client(j.clientId)?.name || ""} · ${jobTitle(j)} · ${crew(j.id).map((s) => first(vol(s.vid)?.name || "")).filter(Boolean).join(" & ")}`;
+  const jobPick = (id, cur) => `<select class="in" id="${id}" style="min-width:260px;max-width:100%"><option value="">No specific job (shout-out only)</option>${done.map((j) => `<option value="${j.id}" ${j.id === cur ? "selected" : ""}>${esc(jobLabel(j))}</option>`).join("")}</select>`;
+  const where = (t) => { const j = job(t.job_id), names = j ? crew(j.id).map((s) => first(vol(s.vid)?.name || "a volunteer")) : [];
+    return [j ? `Credited to ${esc(names.join(" and "))} (${esc(jobTitle(j))}, ${j.date ? fmtDate(j.date) : ""})` : "", t.shoutout ? "Shared with all volunteers" : ""].filter(Boolean).join(" · "); };
+  const src = { public: "From the website", request: "From the client's request page", admin: "Logged by an admin" };
+  const card = (t) => `<article class="card stack" style="gap:10px">
+    <div class="row">${t.status === "pending" ? `<span class="chip c-amber">Needs a decision</span>` : t.status === "approved" ? `<span class="chip c-green">Approved</span>` : `<span class="chip c-grey">Hidden</span>`}
+      <span class="small muted">${src[t.source] || ""} · ${whenShort(t.created_at)}</span></div>
+    <p>${t.message ? `“${esc(t.message)}”` : `<span class="muted">No message, just a thank-you</span>`}</p>
+    ${t.from_name || t.contact || t.volunteer_names ? `<p class="small">${t.from_name ? `<b>${esc(t.from_name)}</b>` : ""}${t.contact ? ` · ${esc(t.contact)}` : ""}${t.volunteer_names ? ` · volunteers: ${esc(t.volunteer_names)}` : ""}</p>` : ""}
+    ${t.status === "approved" ? `<p class="small muted">${where(t)}</p>` : ""}
+    ${t.status !== "approved" ? `<div class="picker" style="gap:10px">
+      <label class="lbl" for="tj-${t.id}">Which visit was it?${t.suggested_job && !t.job_id ? ` <span class="small muted">(we guessed from the phone or street)</span>` : ""}</label>
+      ${jobPick("tj-" + t.id, t.job_id || t.suggested_job)}
+      <label class="check"><input type="checkbox" id="ts-${t.id}" ${t.job_id ? "" : "checked"}> Also share it as a shout-out to all volunteers</label>
+      <div class="row"><button class="btn" data-act="thanksOk" data-id="${t.id}">Approve</button>${t.status !== "hidden" ? `<button class="btn ghost" data-act="thanksHide" data-id="${t.id}">Hide</button>` : ""}</div>
+    </div>` : `<div class="row"><button class="btn ghost" data-act="thanksHide" data-id="${t.id}">Hide</button></div>`}
+  </article>`;
+  const pending = S.thanks.filter((t) => t.status === "pending"), rest = S.thanks.filter((t) => t.status !== "pending");
+  return `<p class="small muted">Pick the visit to credit the volunteers on it: it counts toward their thank-yous and they're told. Tick <b>shout-out</b> to also put it on every volunteer's thank-you wall. Hide anything inappropriate.</p>
+    <section class="card stack"><h3>Log a thank-you from a call or email</h3>
+      ${jobPick("ty-job", "")}
+      <input type="text" class="in" id="ty-note" placeholder="What they said (optional)">
+      <label class="check"><input type="checkbox" id="ty-shout"> Share it as a shout-out to all volunteers</label>
+      <div><button class="btn" data-act="thanksLog">Add thank-you</button></div></section>
+    ${pending.length ? `<h3>Waiting for you (${pending.length})</h3><div class="list">${pending.map(card).join("")}</div>` : ""}
+    ${rest.length ? `<h3>Earlier</h3><div class="list">${rest.map(card).join("")}</div>` : ""}
+    ${S.thanks.length ? "" : `<div class="empty">No thank-yous yet.</div>`}`;
 }
 function volsTable(people) {
   const order = { pending: 0, approved: 1, trainee: 2, experienced: 3, declined: 4 };
@@ -1321,9 +1343,29 @@ const A = {
   },
   dirFilter: (id) => { S.dirFilter = id; },
   print: () => { window.print(); return SKIP; },
-  thanksOk: async (id) => { await rpc("admin_review_thanks", { p_id: id, p_status: "approved" }); await loadAdmin(); return "Approved. The volunteers can see it now."; },
+  thanksOk: async (id) => {
+    const jobId = $("#tj-" + id).value || null, shout = $("#ts-" + id).checked;
+    if (!jobId && !shout) return toast("Pick the visit, or tick shout-out."), SKIP;
+    await rpc("admin_publish_thanks", { p_id: id, p_job: jobId, p_shoutout: shout }); await loadAdmin();
+    return jobId && shout ? "Credited to the crew and shared with all volunteers." : jobId ? "Credited to the volunteers on that job." : "Shared with all volunteers.";
+  },
   thanksHide: async (id) => { await rpc("admin_review_thanks", { p_id: id, p_status: "hidden" }); await loadAdmin(); return "Hidden."; },
-  thanksLog: async () => { await rpc("admin_add_thanks", { p_job: $("#ty-job").value, p_message: $("#ty-note").value.trim() }); await loadAdmin(); return "Thank-you added. The crew will see it."; },
+  thanksLog: async () => {
+    const jobId = $("#ty-job").value || null, shout = $("#ty-shout").checked;
+    if (!jobId && !shout) return toast("Pick the visit, or tick shout-out."), SKIP;
+    await rpc("admin_add_thanks", { p_job: jobId, p_message: $("#ty-note").value.trim(), p_shoutout: shout }); await loadAdmin();
+    return "Thank-you added.";
+  },
+  sendThanks: async () => {
+    const v = (id) => $("#" + id).value.trim(), err = $("#t-err");
+    const problem = !v("t-name") ? "Please type your name." : !v("t-where") ? "Please type your street or phone number, so we know which visit it was." : !v("t-msg") && !v("t-vols") ? "Please write a few words for the volunteers." : "";
+    if (problem) { err.textContent = problem; err.hidden = false; return SKIP; }
+    const { error } = await sb.rpc("submit_thanks", { p: { name: v("t-name"), contact: v("t-where"), volunteers: v("t-vols"), message: v("t-msg") } });
+    if (error) { err.textContent = friendly(error, "Something went wrong. Please try again, or call us."); err.hidden = false; return SKIP; }
+    S.thanksSent = true;
+    setTimeout(() => document.getElementById("thank")?.scrollIntoView({ block: "start" }));
+  },
+  thanksAgain: () => { S.thanksSent = false; setTimeout(() => document.getElementById("thank")?.scrollIntoView({ block: "start" })); },
   thankCrew: async () => { await rpc("thank_crew", { tok: S.token, p_message: $("#ty-msg").value.trim() || null }); await loadRequest(); return "Thank you! We'll pass it on."; },
   pwOpen: (id) => {
     // Easy to read out or text: e.g. "maple-rake-4827".

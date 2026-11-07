@@ -174,3 +174,5 @@ html { scroll-padding-top: 110px; -webkit-text-size-adjust: 100%; text-size-adju
   .lp .hero .ctas .sparks { display: none; }
   .lp .featured { transform: none; }
 }
+.lp .err { color: #8A3524; background: var(--t-red); padding: 10px 14px; border-radius: 12px; font-weight: 700; }
+.lp .thank-card .btn.soft { box-shadow: none; }
