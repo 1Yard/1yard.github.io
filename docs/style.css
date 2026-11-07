@@ -327,3 +327,24 @@ tr.flash td { animation: flashbg 2.4s ease-out; }
   .bellpanel { position: fixed; left: 16px; right: 16px; top: 72px; width: auto; }
 }
 .pwshow { font-size: 1.15rem; font-weight: 700; background: var(--surface); border-radius: 8px; padding: 6px 10px; justify-self: start; user-select: all; }
+
+/* ---------- levels, directory, thank-yous ---------- */
+.cartag { display: block; font-size: .78rem; margin-top: 2px; }
+.dir { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.person { display: grid; gap: 6px; align-content: start; }
+.pstats { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: .88rem; color: var(--muted); }
+.pstats b { color: var(--fg); }
+.thanks-wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.thank { display: grid; gap: 8px; background: var(--peach); }
+.tmsg { font-family: var(--display); font-size: 1.15rem; line-height: 1.35; }
+.thanks-done { font-size: 1.1rem; text-align: center; }
+.levelcard .chip { font-size: 1rem; padding: 6px 14px; }
+.prog { display: grid; gap: 4px; font-size: .92rem; }
+.prog .bar { height: 10px; background: var(--sunk); border-radius: 6px; overflow: hidden; }
+.prog .bar i { display: block; height: 100%; background: var(--leaf); border-radius: 6px; }
+@media print {
+  .side, .mtop, .seasonbar, .noprint, .foot-note, #toast { display: none !important; }
+  .shell { display: block; }
+  body { background: #fff; }
+  .card, .stat { box-shadow: none; border: 1px solid #ddd; }
+}

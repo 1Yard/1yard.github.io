@@ -75,6 +75,13 @@ alter table public.jobs add column if not exists actual_hours numeric(4,1);
 alter table public.jobs add column if not exists crewed_at timestamptz;
 -- True after an admin set a temporary password, until the person picks their own.
 alter table public.profiles add column if not exists temp_password boolean not null default false;
+-- Level shown on the site (trainee, community, senior, team_lead, captain), car, and
+-- what the volunteer agreed to share in the volunteer directory.
+alter table public.profiles add column if not exists level text;
+alter table public.profiles add column if not exists has_car boolean not null default false;
+alter table public.profiles add column if not exists share_phone boolean not null default false;
+alter table public.profiles add column if not exists share_email boolean not null default false;
+alter table public.profiles add column if not exists prefs_set_at timestamptz;
 alter table public.jobs add column if not exists dropout_at timestamptz;
 
 create unique index if not exists one_open_request_per_client
@@ -143,6 +150,28 @@ create table if not exists public.job_reports (
   concern_detail  text not null default '',
   created_at      timestamptz not null default now()
 );
+
+-- Every level a volunteer reached, and when (set_by = the admin, if set by hand).
+create table if not exists public.level_events (
+  id            uuid primary key default gen_random_uuid(),
+  volunteer_id  uuid not null references public.profiles(id) on delete cascade,
+  level         text not null,
+  set_by        uuid references public.profiles(id) on delete set null,
+  created_at    timestamptz not null default now()
+);
+
+-- Thank-yous from clients (or logged by an admin after a phone call), per job.
+create table if not exists public.thanks (
+  id           uuid primary key default gen_random_uuid(),
+  job_id       uuid not null references public.jobs(id) on delete cascade,
+  message      text not null default '',
+  from_client  boolean not null default true,
+  logged_by    uuid references public.profiles(id) on delete set null,
+  status       text not null default 'pending' check (status in ('pending', 'approved', 'hidden')),
+  created_at   timestamptz not null default now(),
+  reviewed_at  timestamptz
+);
+create unique index if not exists one_client_thanks_per_job on public.thanks (job_id) where from_client;
 
 -- Admin call notes on a request/job (the same row, so they carry over when it's published).
 create table if not exists public.admin_notes (
@@ -217,7 +246,7 @@ $$;
 create or replace function public.handle_new_user() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
-  insert into profiles (id, email, name, phone, university, year, skills, availability, why)
+  insert into profiles (id, email, name, phone, university, year, skills, availability, why, has_car, share_phone, share_email, prefs_set_at)
   values (
     new.id,
     coalesce(new.email, ''),
@@ -227,7 +256,11 @@ begin
     left(coalesce(new.raw_user_meta_data->>'year', ''), 40),
     coalesce(array(select jsonb_array_elements_text(new.raw_user_meta_data->'skills')), '{}'),
     coalesce(array(select jsonb_array_elements_text(new.raw_user_meta_data->'availability')), '{}'),
-    left(coalesce(new.raw_user_meta_data->>'why', ''), 2000)
+    left(coalesce(new.raw_user_meta_data->>'why', ''), 2000),
+    coalesce((new.raw_user_meta_data->>'has_car')::boolean, false),
+    coalesce((new.raw_user_meta_data->>'share_phone')::boolean, false),
+    coalesce((new.raw_user_meta_data->>'share_email')::boolean, false),
+    case when new.raw_user_meta_data ? 'has_car' then now() end
   )
   on conflict (id) do nothing;
   return new;
@@ -267,6 +300,12 @@ alter table public.notifications enable row level security;
 alter table public.email_outbox  enable row level security;
 alter table public.job_reports   enable row level security;
 alter table public.admin_notes   enable row level security;
+alter table public.level_events  enable row level security;
+alter table public.thanks        enable row level security;
+drop policy if exists "admin reads" on public.level_events;
+create policy "admin reads" on public.level_events for select using (public.is_admin());
+drop policy if exists "admin reads" on public.thanks;
+create policy "admin reads" on public.thanks for select using (public.is_admin());
 
 drop policy if exists "read own notifications" on public.notifications;
 create policy "read own notifications" on public.notifications
@@ -377,10 +416,11 @@ begin
     into names, key from job_signups s join profiles p on p.id = s.volunteer_id where s.job_id = p_job;
   key := 'crew:' || p_job || ':' || key || ':' || j.date || ':' || j.start_time;
   for v in select p.id, p.name, p.email,
-             (select pp.name from job_signups ss join profiles pp on pp.id = ss.volunteer_id where ss.job_id = p_job and ss.volunteer_id <> p.id limit 1) partner
+             (select pp.name from job_signups ss join profiles pp on pp.id = ss.volunteer_id where ss.job_id = p_job and ss.volunteer_id <> p.id limit 1) partner,
+             coalesce((select pp.has_car from job_signups ss join profiles pp on pp.id = ss.volunteer_id where ss.job_id = p_job and ss.volunteer_id <> p.id limit 1), false) partner_car
            from job_signups s join profiles p on p.id = s.volunteer_id where s.job_id = p_job loop
     perform notify(v.id, 'crew_confirmed', p_job,
-      'Crew confirmed: you and ' || first_name(v.partner) || ', ' || fmt_when(j.date, j.start_time, false) || ' at ' || c.address || '.',
+      'Crew confirmed: you and ' || first_name(v.partner) || case when v.partner_car then ' (🚗 has a car)' else '' end || ', ' || fmt_when(j.date, j.start_time, false) || ' at ' || c.address || '.',
       'job:' || p_job, false, key || ':' || v.id);
     perform queue_email(v.email, 'You''re confirmed: ' || fmt_when(j.date, j.start_time, false), 'Your crew is set',
       array['Hi ' || first_name(v.name) || ',',
@@ -462,6 +502,10 @@ begin
   return jsonb_build_object(
     'shadow_count', shadow_count(me.id),
     'jobs_done', jobs_done(me.id),
+    'stats', vol_stats(me.id),
+    'level_rules', level_rules(),
+    'levels', coalesce((select jsonb_agg(jsonb_build_object('level', e.level, 'at', e.created_at) order by e.created_at)
+                        from level_events e where e.volunteer_id = me.id), '[]'),
     -- Completed jobs and hours, for the volunteer's own record (e.g. school service hours).
     'history', coalesce((
       select jsonb_agg(jsonb_build_object('id', j.id, 'date', j.date, 'services', j.services,
@@ -483,7 +527,7 @@ begin
         'notes',        case when m.mine then j.notes end,
         'crew', coalesce((
           select jsonb_agg(jsonb_build_object(
-            'id', p.id, 'name', p.name, 'as_trainee', s.as_trainee, 'at', s.created_at,
+            'id', p.id, 'name', p.name, 'as_trainee', s.as_trainee, 'at', s.created_at, 'has_car', p.has_car, 'level', p.level,
             'phone', case when m.mine then p.phone end,
             'email', case when m.mine then p.email end) order by s.created_at)
           from job_signups s join profiles p on p.id = s.volunteer_id where s.job_id = j.id), '[]')
@@ -743,6 +787,7 @@ language sql stable security definer set search_path = public as $$
     'date', j.date, 'start_time', j.start_time, 'created_at', j.created_at,
     'needs_new_dates', needs_new_dates(j),
     'crewed', j.crewed_at is not null,
+    'thanked', exists (select 1 from thanks t where t.job_id = j.id and t.from_client),
     'crew', coalesce((select jsonb_agg(split_part(p.name, ' ', 1) order by s.created_at)
                       from job_signups s join profiles p on p.id = s.volunteer_id where s.job_id = j.id), '[]'))
   from jobs j join clients c on c.id = j.client_id
@@ -787,9 +832,6 @@ begin
             'Next steps: log in, read the two training guides, then download the waiver, sign it and upload it. After that you can pick jobs as a trainee.',
             'Your first 2 jobs are with an experienced volunteer, so you''re never on your own while you learn.'],
       'Log in to 1Yard', site_url() || '/?go=vhome', 'approved', null, 'approved:' || new.id);
-  elsif old.status = 'trainee' and new.status = 'experienced' then
-    perform notify(new.id, 'promoted', null, 'You''re now an experienced volunteer. You can take any open spot, including partnering with trainees.',
-      'vhome', false, 'promoted:' || new.id || ':' || extract(epoch from now())::bigint);
   end if;
   return null;
 end $$;
@@ -1029,6 +1071,180 @@ create or replace function public.password_changed() returns void
 language sql security definer set search_path = public as $$
   update profiles set temp_password = false where id = auth.uid() $$;
 
+-- ---------- Levels, car, directory, thank-yous ------------------------
+-- Levels: trainee → community → senior → team_lead → captain. The first four
+-- follow from data (training, shadow shifts, hours, trainees supervised); Yard
+-- Captain is given by an admin. Levels only go up automatically; admins can set
+-- any level. Every change is logged in level_events.
+
+-- Thresholds live here. Change the numbers and re-run this file.
+create or replace function public.level_rules() returns jsonb language sql immutable as $$
+  select '{"senior":    {"hours": 10, "supervised": 3},
+           "team_lead": {"hours": 30, "supervised": 8}}'::jsonb $$;
+
+create or replace function public.level_rank(l text) returns int language sql immutable as $$
+  select case l when 'trainee' then 1 when 'community' then 2 when 'senior' then 3 when 'team_lead' then 4 when 'captain' then 5 else 0 end $$;
+create or replace function public.level_name(l text) returns text language sql immutable as $$
+  select case l when 'trainee' then 'Trainee' when 'community' then 'Community Volunteer' when 'senior' then 'Senior Volunteer'
+                when 'team_lead' then 'Volunteer Team Lead' when 'captain' then 'Yard Captain' else '' end $$;
+
+-- Hours, jobs, trainee shifts supervised, and thank-yous for one volunteer.
+create or replace function public.vol_stats(vid uuid) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'hours', coalesce((select sum(coalesce(j.actual_hours, j.hours)) from job_signups s join jobs j on j.id = s.job_id
+                       where s.volunteer_id = vid and j.status = 'done'), 0),
+    'jobs', jobs_done(vid),
+    'supervised', (select count(*)::int from job_signups s join jobs j on j.id = s.job_id
+                   where s.volunteer_id = vid and not s.as_trainee and j.status = 'done'
+                     and exists (select 1 from job_signups p where p.job_id = s.job_id and p.volunteer_id is distinct from vid and p.as_trainee)),
+    'thanks', (select count(*)::int from thanks t join job_signups s on s.job_id = t.job_id
+               where s.volunteer_id = vid and t.status <> 'hidden')) $$;
+
+-- Raise someone's level if their numbers now qualify. Never lowers, never makes Captain.
+create or replace function public.check_level(vid uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare p profiles; st jsonb; r jsonb := level_rules(); target text;
+begin
+  select * into p from profiles where id = vid;
+  if p.id is null or p.status <> 'experienced' then return; end if;
+  st := vol_stats(vid);
+  target := case
+    when (st->>'hours')::numeric >= (r->'team_lead'->>'hours')::numeric and (st->>'supervised')::int >= (r->'team_lead'->>'supervised')::int then 'team_lead'
+    when (st->>'hours')::numeric >= (r->'senior'->>'hours')::numeric and (st->>'supervised')::int >= (r->'senior'->>'supervised')::int then 'senior'
+    else 'community' end;
+  if level_rank(target) > level_rank(p.level) then update profiles set level = target where id = vid; end if;
+end $$;
+
+-- Keep level in step with status (trainee / experienced) whatever changed it.
+create or replace function public.trg_profile_level_sync() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.status = 'trainee' then new.level := 'trainee';
+  elsif new.status = 'experienced' then
+    if level_rank(new.level) < 2 then new.level := 'community'; end if;
+  else new.level := null;
+  end if;
+  return new;
+end $$;
+drop trigger if exists profile_level_sync on public.profiles;
+create trigger profile_level_sync before insert or update of status, level on public.profiles
+  for each row execute function public.trg_profile_level_sync();
+
+-- Log every level change and congratulate on a level-up.
+create or replace function public.trg_profile_level_log() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.level is not null and new.level is distinct from old.level then
+    insert into level_events (volunteer_id, level, set_by) values (new.id, new.level, case when is_admin() then auth.uid() end);
+    if level_rank(new.level) > level_rank(old.level) and new.level <> 'trainee' then
+      perform notify(new.id, 'level_up', null, '🎉 You''re now a ' || level_name(new.level) || '!', 'vrecord', false, null);
+    end if;
+  end if;
+  return null;
+end $$;
+drop trigger if exists profile_level_log on public.profiles;
+create trigger profile_level_log after update on public.profiles
+  for each row execute function public.trg_profile_level_log();
+
+-- Finished jobs and hours corrections can unlock a level.
+create or replace function public.trg_job_levels() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v uuid;
+begin
+  if new.status = 'done' and (old.status <> 'done' or old.actual_hours is distinct from new.actual_hours) then
+    for v in select volunteer_id from job_signups where job_id = new.id and volunteer_id is not null loop
+      perform check_level(v);
+    end loop;
+  end if;
+  return null;
+end $$;
+drop trigger if exists job_levels on public.jobs;
+create trigger job_levels after update on public.jobs for each row execute function public.trg_job_levels();
+
+-- Existing volunteers: fill in levels once (and catch anyone who already qualifies).
+update profiles set level = case status when 'trainee' then 'trainee' else 'community' end
+where level is null and status in ('trainee', 'experienced');
+select check_level(id) from profiles where status = 'experienced';
+
+-- A volunteer's own car + directory settings.
+create or replace function public.update_my_prefs(p_has_car boolean, p_share_phone boolean, p_share_email boolean) returns void
+language sql security definer set search_path = public as $$
+  update profiles set has_car = coalesce(p_has_car, false), share_phone = coalesce(p_share_phone, false),
+    share_email = coalesce(p_share_email, false), prefs_set_at = now()
+  where id = auth.uid() $$;
+
+-- Directory for trained volunteers: everyone trained is listed; phone/email only if they agreed.
+-- Also the thank-you wall (approved thank-yous, with the job and the crew).
+create or replace function public.volunteer_directory() returns jsonb
+language plpgsql security definer set search_path = public as $$
+begin
+  perform require_trained();
+  return jsonb_build_object(
+    'people', coalesce((select jsonb_agg(jsonb_build_object(
+        'id', p.id, 'name', p.name, 'university', p.university, 'year', p.year, 'level', p.level, 'has_car', p.has_car,
+        'phone', case when p.share_phone then p.phone end, 'email', case when p.share_email then p.email end,
+        'stats', vol_stats(p.id)) order by level_rank(p.level) desc, p.name)
+      from profiles p where p.status in ('trainee', 'experienced') and p.role = 'volunteer'), '[]'),
+    'thanks', coalesce((select jsonb_agg(jsonb_build_object(
+        'id', t.id, 'message', t.message, 'created_at', t.created_at, 'job', svc_names(j.services), 'date', j.date, 'area', c.area,
+        'crew', (select jsonb_agg(p.name order by s.created_at) from job_signups s join profiles p on p.id = s.volunteer_id where s.job_id = j.id))
+        order by t.created_at desc)
+      from (select * from thanks where status = 'approved' order by created_at desc limit 50) t
+      join jobs j on j.id = t.job_id join clients c on c.id = j.client_id), '[]'));
+end $$;
+
+-- Client says thanks from their private link (once per job). A message waits for an
+-- admin; a plain thank-you counts and shows right away.
+create or replace function public.thank_crew(tok uuid, p_message text default null) returns void
+language plpgsql security definer set search_path = public as $$
+declare j jobs; msg text := left(trim(coalesce(p_message, '')), 500);
+begin
+  select * into j from jobs where access_token = tok;
+  if j.id is null or j.status <> 'done' then raise exception 'You can say thanks once the job is done'; end if;
+  if exists (select 1 from thanks where job_id = j.id and from_client) then raise exception 'You already thanked this crew. Thank you!'; end if;
+  insert into thanks (job_id, message, from_client, status) values (j.id, msg, true, case when msg = '' then 'approved' else 'pending' end);
+end $$;
+
+-- Admin logs a thank-you a client gave by phone (approved right away).
+create or replace function public.admin_add_thanks(p_job uuid, p_message text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_admin() then raise exception 'Admins only'; end if;
+  if not exists (select 1 from jobs where id = p_job and status = 'done') then raise exception 'Only finished jobs can be thanked'; end if;
+  insert into thanks (job_id, message, from_client, status, logged_by, reviewed_at)
+  values (p_job, left(trim(coalesce(p_message, '')), 500), false, 'approved', auth.uid(), now());
+end $$;
+
+create or replace function public.admin_review_thanks(p_id uuid, p_status text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_admin() then raise exception 'Admins only'; end if;
+  if p_status not in ('approved', 'hidden') then raise exception 'Approve or hide'; end if;
+  update thanks set status = p_status, reviewed_at = now() where id = p_id;
+end $$;
+
+-- Thank-you messages: tell admins when one needs a look; tell the crew once it counts/shows.
+create or replace function public.trg_thanks() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare j jobs; c clients; v uuid;
+begin
+  select * into j from jobs where id = new.job_id; select * into c from clients where id = j.client_id;
+  if tg_op = 'INSERT' and new.status = 'pending' then
+    perform notify_admins('thanks_review', j.id, first_name(c.name) || ' sent a thank-you message for ' || lower(svc_names(j.services)) || '. Approve it so the volunteers see it.',
+      'thanks', false, 'thanks:' || new.id);
+  end if;
+  if new.status = 'approved' and (tg_op = 'INSERT' or old.status <> 'approved') then
+    for v in select volunteer_id from job_signups where job_id = j.id and volunteer_id is not null loop
+      perform notify(v, 'thanks', j.id, '❤️ A client in ' || c.area || ' thanked you for ' || lower(svc_names(j.services))
+        || case when new.message <> '' then ': "' || left(new.message, 200) || '"' else '.' end, 'vcommunity', false, 'thanked:' || new.id || ':' || v);
+    end loop;
+  end if;
+  return null;
+end $$;
+drop trigger if exists thanks_events on public.thanks;
+create trigger thanks_events after insert or update of status on public.thanks for each row execute function public.trg_thanks();
+
 -- ---------- Explicit access grants ----------------------------------
 -- Works whether or not "Automatically expose new tables" is on. RLS above
 -- still decides which rows anyone can see.
@@ -1037,24 +1253,29 @@ revoke all on public.profiles, public.clients, public.jobs, public.job_signups f
 grant select, update on public.profiles to authenticated;
 grant select, insert, update, delete on public.clients, public.jobs, public.job_signups to authenticated;
 
-grant select on public.notifications, public.job_reports, public.email_outbox to authenticated;
+grant select on public.notifications, public.job_reports, public.email_outbox, public.level_events, public.thanks to authenticated;
+revoke all on public.level_events, public.thanks from anon;
 grant select, delete on public.admin_notes to authenticated;
 revoke all on public.notifications, public.job_reports, public.email_outbox, public.admin_notes from anon;
 
 -- Functions the website calls. Clients (not logged in) only get these four.
 grant execute on function public.submit_request(jsonb), public.get_request(uuid),
-  public.cancel_request(uuid), public.ping() to anon, authenticated;
+  public.cancel_request(uuid), public.thank_crew(uuid, text), public.ping() to anon, authenticated;
 grant execute on function public.volunteer_board(), public.join_job(uuid, date, text),
   public.change_my_time(uuid, date, text), public.leave_job(uuid, text), public.finish_job(uuid, numeric, text, text, text),
   public.complete_training(text, boolean), public.admin_remove_volunteer(uuid),
   public.mark_notifications_read(uuid[]), public.add_admin_note(uuid, text),
-  public.admin_set_password(uuid, text), public.password_changed() to authenticated;
+  public.admin_set_password(uuid, text), public.password_changed(),
+  public.update_my_prefs(boolean, boolean, boolean), public.volunteer_directory(),
+  public.admin_add_thanks(uuid, text), public.admin_review_thanks(uuid, text) to authenticated;
 -- Postgres lets everyone run new functions by default; logged-out visitors don't need these.
 revoke execute on function public.volunteer_board(), public.join_job(uuid, date, text),
   public.change_my_time(uuid, date, text), public.leave_job(uuid, text), public.finish_job(uuid, numeric, text, text, text),
   public.complete_training(text, boolean), public.admin_remove_volunteer(uuid),
   public.mark_notifications_read(uuid[]), public.add_admin_note(uuid, text),
-  public.admin_set_password(uuid, text), public.password_changed() from public, anon;
+  public.admin_set_password(uuid, text), public.password_changed(),
+  public.update_my_prefs(boolean, boolean, boolean), public.volunteer_directory(),
+  public.admin_add_thanks(uuid, text), public.admin_review_thanks(uuid, text) from public, anon;
 
 -- Internal helpers shouldn't be callable from the website.
 revoke execute on function public.handle_new_user(), public.trg_profile_new(), public.trg_profile_status(),
@@ -1062,7 +1283,9 @@ revoke execute on function public.handle_new_user(), public.trg_profile_new(), p
   public.notify(uuid, text, uuid, text, text, boolean, text), public.notify_admins(text, uuid, text, text, boolean, text),
   public.queue_email(text, text, text, text[], text, text, text, uuid, text, text, text), public.on_crew_full(uuid),
   public.email_partner_dropped(uuid, uuid, text), public.report_concern(uuid), public.daily_tasks(boolean),
-  public.claim_emails(int), public.mark_email(uuid, boolean, text, text) from public, anon, authenticated;
+  public.claim_emails(int), public.mark_email(uuid, boolean, text, text),
+  public.vol_stats(uuid), public.check_level(uuid), public.trg_profile_level_sync(), public.trg_profile_level_log(),
+  public.trg_job_levels(), public.trg_thanks() from public, anon, authenticated;
 
 -- ---------- Waiver storage -------------------------------------------
 -- Private bucket, PDFs only, 5 MB max. Volunteers upload into their own
