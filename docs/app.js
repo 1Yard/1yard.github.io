@@ -460,7 +460,6 @@ function homeView() {
     <section class="bg-white has-wave" id="why">
       <div class="wrap split">
         <div>
-          <span class="tag green"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 L19 6 V11 C19 16 16 19 12 21 C8 19 5 16 5 11 V6 Z"/><path d="M9 12 L11 14 L15 10"/></svg>Why trust 1Yard</span>
           <h2>We exist to extend <span class="swash">care<svg viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true"><path d="M2 10 C30 4 70 4 98 9" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span>, not just complete tasks.</h2>
           <p class="pull">Our volunteers step in as an extension of our clients' capacity when aging, illness, or mobility makes everyday tasks difficult.</p>
           <svg class="sprig" viewBox="0 0 120 60" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -471,10 +470,9 @@ function homeView() {
           </svg>
         </div>
         <div class="trust">
-          <article><h3>Dignity first</h3><p>We treat clients as partners and decision-makers when they work with our volunteers.</p></article>
-          <article><h3>Safety first</h3><p>Volunteers always work in pairs and are trained in task safety before their first job.</p></article>
           <article><h3>Always free</h3><p>We never charge for our help. If you'd like to give back, you can donate to the Princess Margaret Cancer Centre. No money goes through 1Yard.</p></article>
           <article><h3>Local</h3><p>Students from Kingston's high schools and universities, helping their neighbours.</p></article>
+          <article><h3>Safety first</h3><p>Volunteers always work in pairs and are trained in task safety before their first job.</p></article>
         </div>
       </div>
       <svg class="wave" viewBox="0 0 1440 70" preserveAspectRatio="none" aria-hidden="true"><path d="M0 26 C220 56 520 50 780 22 C1040 -2 1260 30 1440 46 V70 H0 Z" fill="#EEF3E6"/></svg>
@@ -484,7 +482,6 @@ function homeView() {
     <section class="bg-sage has-wave" id="how">
       <div class="wrap">
         <div class="steps-head"><div>
-          <span class="tag orange"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18 C14 18 10 6 16 6"/></svg>How 1Yard works</span>
           <h2>Getting help is <span class="swash orange">simple<svg viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true"><path d="M2 10 C30 4 70 4 98 9" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span></h2>
         </div></div>
         <div class="steps-wrap" style="position:relative;margin-top:48px">
@@ -505,7 +502,6 @@ function homeView() {
     <section class="bg-cream has-wave" id="impact">
       <div class="wrap impact-grid">
         <div>
-          <span class="tag red"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20 C5 15 3 11 3 8 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8 C21 11 19 15 12 20 Z"/></svg>Community impact</span>
           <div><p class="bignum">$17,000+<svg class="sparks" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M20 4 L16 14 M34 14 L24 19 M36 30 L26 29"/></svg></p></div>
           <p class="big-sub">raised for the Princess Margaret Cancer Foundation since 2021, thanks to community generosity.</p>
           <a class="btn soft donate" href="https://supportthepmcf.ca/ui/PDPCelebrate/p/231bd88823ca45efa285b5439d21e30d" target="_blank" rel="noopener"><svg class="heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20 C5 15 3 11 3 8 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8 C21 11 19 15 12 20 Z"/></svg>See our donation page <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 L17 7 M9 7 H17 V15"/></svg></a>
@@ -527,7 +523,6 @@ function homeView() {
     <section class="bg-sage has-wave" id="thank">
       <div class="wrap thank-grid">
         <div>
-          <span class="tag red"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20 C5 15 3 11 3 8 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8 C21 11 19 15 12 20 Z"/></svg>Thank a volunteer</span>
           <h2>Did our volunteers help <span class="swash red">you?<svg viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true"><path d="M2 10 C30 4 70 4 98 9" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span></h2>
           <p style="margin-top:18px">Leave a short note and we'll pass it on. It means a lot to the students who came by.</p>
           ${saved.length ? `<p style="margin-top:14px" class="opt">Already asked for help on this device? You can also say thanks from <button class="linkbtn" data-act="openRequest" data-id="${esc(saved[0])}">your request page</button>.</p>` : ""}
@@ -562,7 +557,6 @@ function homeView() {
           <g fill="none" stroke="#E3A72F" stroke-width="3" stroke-linecap="round"><path d="M236 24 L240 36 M256 32 L246 40 M260 52 L248 52"/></g>
         </svg>
         <div>
-          <span class="tag green"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20 C4 10 10 4 20 4 C20 14 14 20 4 20 Z"/><path d="M4 20 L14 10"/></svg>Volunteer</span>
           <h2>High school or university student? Volunteer with <span class="swash">1Yard.<svg viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true"><path d="M2 10 C30 4 70 4 98 9" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span></h2>
           <p style="margin-top:18px">Help neighbours with yard work around your classes. You pick the jobs and times, always with a partner. Your first two jobs are supervised shifts, with a Community Volunteer or above on the crew.</p>
           <div class="ctas"><a class="btn primary big" href="#volunteer" data-act="go" data-id="signup">Apply to volunteer <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12 H19 M13 6 L19 12 L13 18"/></svg></a><a class="btn soft" href="#volunteer" data-act="go" data-id="login">Volunteer log in</a></div>
