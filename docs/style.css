@@ -363,3 +363,4 @@ tr.flash td { animation: flashbg 2.4s ease-out; }
 .ladder li.done .dot { background: var(--leaf); border-color: var(--leaf); color: #fff; font-weight: 700; }
 .ladder li.here .dot { box-shadow: 0 0 0 4px var(--sage-2); }
 .ladder li:not(.done) b { color: var(--muted); }
+.howlevels { background: var(--sage); border-radius: 14px; padding: 14px 16px; display: grid; gap: 6px; font-size: .92rem; }

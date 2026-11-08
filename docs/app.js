@@ -60,8 +60,13 @@ const jobTitle = (j) => j.services.map((s) => svc(s).name).join(" + ");
 const neededTools = (services) => [...new Set(services.flatMap((s) => svc(s).tools))];
 const neededSkills = (services) => [...new Set(services.flatMap((s) => svc(s).skills))];
 const missingTools = (j) => neededTools(j.services).filter((t) => !j.tools[t]);
-const needsExperienced = (j) => { const c = crew(j.id); return c.length === 1 && c[0].asTrainee; };
-const isFull = (j) => crew(j.id).length >= 2;
+// Each job needs j.spots volunteers (2-6). At most half the crew can be trainees, so every
+// trainee has a supervisor (a Community Volunteer or above). Mirrors join_job() on the server.
+const spotsOf = (j) => j.spots || 2;
+const traineesOn = (j) => crew(j.id).filter((s) => s.asTrainee).length;
+const isFull = (j) => crew(j.id).length >= spotsOf(j);
+const needsExperienced = (j) => !isFull(j) && traineesOn(j) >= Math.floor(spotsOf(j) / 2);
+const joinNames = (n) => n.length < 2 ? n.join("") : n.slice(0, -1).join(", ") + " and " + n[n.length - 1];
 const canSeeBoard = (v) => v && (v.status === "trainee" || v.status === "experienced");
 const liveWindows = (j) => (j.windows || []).filter((x) => x.date > today()).sort((a, b) => a.date.localeCompare(b.date));
 const windowText = (x) => `${fmtDate(x.date)} · ${PARTS[x.part].name.toLowerCase()} (${PARTS[x.part].range})`;
@@ -86,7 +91,7 @@ function readWindows(prefix) {
   for (let i = 0; i < 4; i++) { const date = $(`#${prefix}-date-${i}`)?.value; if (date && !out.some((x) => x.date === date)) out.push({ date, part: $(`#${prefix}-part-${i}`).value }); }
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }
-// Admin-side counts (the server has the same logic in shadow_count / jobs_done).
+// Admin-side counts (the server has the same logic in shadow_count / jobs_done). Supervised shifts = shadow_count.
 function shadowCount(vid) {
   return S.signups.filter((s) => s.vid === vid && s.asTrainee && job(s.jobId)?.status === "done" &&
     S.signups.some((p) => p.jobId === s.jobId && p.vid !== vid && !p.asTrainee)).length;
@@ -98,12 +103,12 @@ function canJoin(v, j) {
   if (!canSeeBoard(v)) return { ok: false, why: "Finish training first" };
   if (j.status !== "scheduled") return { ok: false, why: "Not open" };
   if (c.some((s) => s.vid === v.id)) return { ok: false, why: "You're on this job" };
-  if (c.length >= 2) return { ok: false, why: "Full" };
+  if (c.length >= spotsOf(j)) return { ok: false, why: "Full" };
   if (needsNewDates(j)) return { ok: false, why: "Waiting on new dates" };
-  if (v.status === "trainee" && c.some((s) => s.asTrainee)) return { ok: false, why: "Experienced volunteers only" };
+  if (v.status === "trainee" && needsExperienced(j)) return { ok: false, why: "Supervisor spots only" };
   return { ok: true };
 }
-const V_STATUS = { pending: ["Waiting for review", "c-amber"], approved: ["Approved · doing training", "c-sky"], trainee: ["Trainee", "c-sky"], experienced: ["Experienced", "c-green"], declined: ["Declined", "c-rose"] };
+const V_STATUS = { pending: ["Waiting for review", "c-amber"], approved: ["Approved · doing training", "c-sky"], trainee: ["Trainee", "c-sky"], experienced: ["Community Volunteer", "c-green"], declined: ["Declined", "c-rose"] };
 const vChip = (s) => `<span class="chip ${V_STATUS[s][1]}">${V_STATUS[s][0]}</span>`;
 // Volunteer levels. Trainee → Community Volunteer come from training; Senior and Team Lead
 // unlock from hours + trainee shifts supervised (numbers in level_rules() in schema.sql);
@@ -121,17 +126,18 @@ function jobState(j) {
   if (j.status === "done") return ["Done", "c-green"];
   const n = crew(j.id).length;
   if (needsNewDates(j)) return ["Needs new dates", "c-rose"];
-  if (n >= 2) return j.toldAt ? ["Crew confirmed · client told", "c-green"] : ["Crew confirmed · call client", "c-amber"];
-  if (needsExperienced(j)) return ["Needs experienced volunteer", "c-amber"];
-  return [n === 0 ? "Needs 2 volunteers" : "Needs 1 volunteer", "c-sky"];
+  if (n >= spotsOf(j)) return j.toldAt ? ["Crew confirmed · client told", "c-green"] : ["Crew confirmed · call client", "c-amber"];
+  if (needsExperienced(j)) return ["Needs a supervisor", "c-amber"];
+  const left = spotsOf(j) - n;
+  return [`Needs ${left} volunteer${left === 1 ? "" : "s"}`, "c-sky"];
 }
 const jChip = (j) => { const [t, c] = jobState(j); return `<span class="chip ${c}">${t}</span>`; };
 function slots(j) {
   const c = crew(j.id);
-  return `<div class="slots">${[0, 1].map((i) => {
+  return `<div class="slots">${[...Array(spotsOf(j)).keys()].map((i) => {
     const s = c[i];
     if (s) { const v = vol(s.vid); return `<div class="slot ${s.asTrainee ? "trainee" : "exp"}"><b>${esc(v?.name || "Former volunteer")}</b>${s.asTrainee ? "Trainee" : LEVELS[levelOf(v)]?.name || "Experienced"}${carTag(v)}</div>`; }
-    if (needsExperienced(j)) return `<div class="slot empty exp-only"><span class="plus">+</span><b>Open spot</b>Experienced only</div>`;
+    if (needsExperienced(j)) return `<div class="slot empty exp-only"><span class="plus">+</span><b>Open spot</b>Supervisor: Community Volunteer or above</div>`;
     return `<div class="slot empty"><span class="plus">+</span><b>Open spot</b>Anyone trained</div>`;
   }).join("")}</div>`;
 }
@@ -143,7 +149,7 @@ const rememberToken = (t) => { try { localStorage.setItem(TOKENS_KEY, JSON.strin
 const mapProfile = (p) => ({ id: p.id, role: p.role, name: p.name, email: p.email, phone: p.phone, uni: p.university, year: p.year, skills: p.skills || [], avail: p.availability || [], why: p.why, status: p.status, appliedAt: p.applied_at, reviewedAt: p.reviewed_at, trainedAt: p.trained_at, promotedAt: p.promoted_at, waiverPath: p.waiver_path, tempPassword: !!p.temp_password,
   level: p.level, hasCar: !!p.has_car, sharePhone: !!p.share_phone, shareEmail: !!p.share_email, prefsSetAt: p.prefs_set_at });
 const mapClient = (c) => ({ id: c.id, name: c.name, phone: c.phone, email: c.email, contact: c.contact, address: c.address, postal: c.postal, area: c.area });
-const mapJob = (j) => ({ id: j.id, clientId: j.client_id, services: j.services, tools: j.tools || {}, flags: j.flags || [], notes: j.notes || "", windows: j.windows || [], status: j.status, date: j.date, start: j.start_time, hours: j.hours, createdAt: j.created_at, toldAt: j.told_at, attempts: j.attempts, lastAttemptAt: j.last_attempt_at, timeChangedAt: j.time_changed_at, publishedAt: j.published_at, doneAt: j.done_at, editedAt: j.edited_at, actualHours: j.actual_hours, crewedAt: j.crewed_at, dropoutAt: j.dropout_at });
+const mapJob = (j) => ({ id: j.id, clientId: j.client_id, services: j.services, tools: j.tools || {}, flags: j.flags || [], notes: j.notes || "", windows: j.windows || [], status: j.status, date: j.date, start: j.start_time, hours: j.hours, createdAt: j.created_at, toldAt: j.told_at, attempts: j.attempts, lastAttemptAt: j.last_attempt_at, timeChangedAt: j.time_changed_at, publishedAt: j.published_at, doneAt: j.done_at, editedAt: j.edited_at, actualHours: j.actual_hours, crewedAt: j.crewed_at, dropoutAt: j.dropout_at, spots: j.spots || 2 });
 const mapSignup = (s) => ({ id: s.id, jobId: s.job_id, vid: s.volunteer_id, asTrainee: s.as_trainee, at: s.created_at });
 const must = ({ data, error }) => { if (error) throw error; return data; };
 
@@ -179,7 +185,7 @@ async function loadBoard() {
   for (const b of data.jobs) {
     const cid = "c-" + b.id;
     S.clients.push({ id: cid, name: b.client_name || "", phone: b.client_phone || "", address: b.address || "", postal: b.postal || "", area: b.area });
-    S.jobs.push({ id: b.id, clientId: cid, services: b.services, tools: b.tools || {}, flags: b.flags || [], notes: b.notes || "", windows: b.windows || [], status: b.status, date: b.date, start: b.start_time, hours: b.hours, timeChangedAt: b.time_changed_at, createdAt: b.created_at, crewedAt: b.crewed_at });
+    S.jobs.push({ id: b.id, clientId: cid, services: b.services, tools: b.tools || {}, flags: b.flags || [], notes: b.notes || "", windows: b.windows || [], status: b.status, date: b.date, start: b.start_time, hours: b.hours, timeChangedAt: b.time_changed_at, createdAt: b.created_at, crewedAt: b.crewed_at, spots: b.spots || 2 });
     for (const m of b.crew) {
       S.signups.push({ id: b.id + m.id, jobId: b.id, vid: m.id, asTrainee: m.as_trainee, at: m.at });
       const known = vol(m.id);
@@ -558,7 +564,7 @@ function homeView() {
         <div>
           <span class="tag green"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20 C4 10 10 4 20 4 C20 14 14 20 4 20 Z"/><path d="M4 20 L14 10"/></svg>Volunteer</span>
           <h2>High school or university student? Volunteer with <span class="swash">1Yard.<svg viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true"><path d="M2 10 C30 4 70 4 98 9" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span></h2>
-          <p style="margin-top:18px">Help neighbours with yard work around your classes. You pick the jobs and times, always with a partner. Your first two jobs are alongside an experienced volunteer.</p>
+          <p style="margin-top:18px">Help neighbours with yard work around your classes. You pick the jobs and times, always with a partner. Your first two jobs are supervised shifts, with a Community Volunteer or above on the crew.</p>
           <div class="ctas"><a class="btn primary big" href="#volunteer" data-act="go" data-id="signup">Apply to volunteer <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12 H19 M13 6 L19 12 L13 18"/></svg></a><a class="btn soft" href="#volunteer" data-act="go" data-id="login">Volunteer log in</a></div>
         </div>
       </div>
@@ -596,14 +602,14 @@ function homeView() {
 function requestView() {
   const r = S.request;
   if (!r) return `<div class="stack"><h1>We couldn't find that request</h1><p>The link may be wrong.${OFFICE_PHONE ? ` Please call us at <b>${esc(OFFICE_PHONE)}</b>.` : ""}</p><button class="bigbtn" data-act="go" data-id="home">Go to the home page</button></div>`;
-  const crewNames = r.crew || [], full = crewNames.length >= 2, active = r.status === "review" || r.status === "scheduled";
+  const crewNames = r.crew || [], full = crewNames.length >= (r.spots || 2), active = r.status === "review" || r.status === "scheduled";
   const wins = (r.windows || []).filter((x) => x.date > today()).sort((a, b) => a.date.localeCompare(b.date));
   let step = 1, msg = "";
   if (r.status === "review") msg = "We got your request. We'll call you soon to check the details.";
   else if (r.status === "scheduled" && r.needs_new_dates) { step = 2; msg = "We couldn't find volunteers for your days. We'll call you to pick new ones."; }
   else if (r.status === "scheduled" && !full && r.crewed && r.date) { step = 2; msg = `Your visit is set for <b>${fmtDate(r.date, true)} at ${fmtTime(r.start_time)}</b>. One volunteer can't come anymore, so we're finding someone else for that time. We'll call you if anything changes.`; }
-  else if (r.status === "scheduled" && !full) { step = 2; msg = `We're finding 2 volunteers for one of your days:<ul class="wins" style="margin-top:6px;font-size:1rem">${wins.map((x) => `<li>${fmtDate(x.date, true)}, ${PARTS[x.part].name.toLowerCase()}</li>`).join("")}</ul>`; }
-  else if (r.status === "scheduled") { step = 3; msg = `<b>${crewNames.map(esc).join(" and ")}</b> will come on <b>${fmtDate(r.date, true)} at ${fmtTime(r.start_time)}</b>.`; }
+  else if (r.status === "scheduled" && !full) { step = 2; msg = `We're finding ${r.spots || 2} volunteers for one of your days:<ul class="wins" style="margin-top:6px;font-size:1rem">${wins.map((x) => `<li>${fmtDate(x.date, true)}, ${PARTS[x.part].name.toLowerCase()}</li>`).join("")}</ul>`; }
+  else if (r.status === "scheduled") { step = 3; msg = `<b>${joinNames(crewNames.map(esc))}</b> will come on <b>${fmtDate(r.date, true)} at ${fmtTime(r.start_time)}</b>.`; }
   else if (r.status === "done") { step = 4; msg = `All done on ${fmtDate(r.date, true)}. Thank you for letting us help!`; }
   else if (r.status === "declined") { step = 0; msg = "We can't help with this request right now. We'll call you to explain."; }
   else { step = 0; msg = "This request was cancelled."; }
@@ -622,8 +628,8 @@ function requestView() {
         ? `<div class="confirm"><b>Cancel this request?</b><div class="wiz-nav"><button class="bigbtn ghost" data-act="confirmNo">No, keep it</button><button class="bigbtn" style="background:var(--rose-fg);color:var(--surface)" data-act="ccancelYes">Yes, cancel</button></div></div>`
         : `<button class="bigbtn ghost" data-act="ccancel">Cancel this request</button>`) : ""}
     </article>
-    ${r.status === "done" ? (r.thanked ? `<p class="thanks-done">❤️ You thanked ${crewNames.map(esc).join(" and ") || "the volunteers"}. Thank you!</p>`
-      : `<article class="card stack"><h2 style="font-size:1.35rem">Want to thank ${crewNames.map(esc).join(" and ") || "your volunteers"}?</h2>
+    ${r.status === "done" ? (r.thanked ? `<p class="thanks-done">❤️ You thanked ${joinNames(crewNames.map(esc)) || "the volunteers"}. Thank you!</p>`
+      : `<article class="card stack"><h2 style="font-size:1.35rem">Want to thank ${joinNames(crewNames.map(esc)) || "your volunteers"}?</h2>
         <label class="lbl" for="ty-msg">A short message <span class="muted">(optional)</span></label>
         <textarea id="ty-msg" placeholder="e.g. Thank you, the yard looks wonderful!"></textarea>
         <button class="bigbtn" data-act="thankCrew">❤️ Send thanks</button></article>`) : ""}
@@ -797,7 +803,7 @@ function communityView() {
     <div class="dir">${people.map((p) => `<article class="card person">
       <div class="row" style="justify-content:space-between"><b>${esc(p.name)}</b>${levelChip({ level: p.level })}</div>
       <span class="small muted">${esc(p.university)}${p.year ? ` · ${esc(p.year)}` : ""}</span>
-      <div class="pstats">${stat(fmtHours(+p.stats.hours), +p.stats.hours === 1 ? "hour" : "hours")}${stat(p.stats.jobs, p.stats.jobs === 1 ? "job" : "jobs")}${stat(p.stats.supervised, p.stats.supervised === 1 ? "trainee supervised" : "trainees supervised")}${stat(p.stats.thanks, "❤️")}</div>
+      <div class="pstats">${stat(fmtHours(+p.stats.hours), +p.stats.hours === 1 ? "hour" : "hours")}${stat(p.stats.jobs, p.stats.jobs === 1 ? "job" : "jobs")}${stat(p.stats.supervised, p.stats.supervised === 1 ? "trainee shift supervised" : "trainee shifts supervised")}${stat(p.stats.thanks, "❤️")}</div>
       ${p.has_car ? `<span class="small">🚗 Has a car</span>` : ""}
       ${p.phone || p.email ? `<span class="small">${p.phone ? `📞 ${esc(p.phone)}` : ""}${p.phone && p.email ? " · " : ""}${p.email ? `✉️ ${esc(p.email)}` : ""}</span>` : `<span class="small muted">Contact details not shared</span>`}
     </article>`).join("") || `<div class="empty">Nobody here yet.</div>`}</div>
@@ -811,7 +817,7 @@ function recordView(v) {
   // Every level you can reach by volunteering, with what it takes and how far along you are.
   const path = [
     ["trainee", "Finish online training and upload your signed waiver.", ""],
-    ["community", `Finish ${SHADOW_SHIFTS_NEEDED} jobs alongside an experienced volunteer.`, bar(lv === "trainee" ? S.myShadow : SHADOW_SHIFTS_NEEDED, SHADOW_SHIFTS_NEEDED, "Jobs with an experienced volunteer")],
+    ["community", `Finish ${SHADOW_SHIFTS_NEEDED} supervised shifts: jobs with a Community Volunteer or above on the crew.`, bar(lv === "trainee" ? S.myShadow : SHADOW_SHIFTS_NEEDED, SHADOW_SHIFTS_NEEDED, "Supervised shifts done")],
     ...["senior", "team_lead"].filter((k) => rules[k]).map((k) => [k, `Volunteer ${rules[k].hours} hours and supervise ${rules[k].supervised} trainee shifts.`,
       bar(+st.hours, rules[k].hours, "Hours volunteered") + bar(st.supervised, rules[k].supervised, "Trainee shifts supervised")]),
   ];
@@ -821,8 +827,12 @@ function recordView(v) {
       <div class="row"><b>${LEVELS[k].em} ${LEVELS[k].name}</b>${here ? `<span class="chip c-green">You're here</span>` : done && reached[k] ? `<span class="small muted">Reached ${fmtDate(reached[k].slice(0, 10))}</span>` : ""}</div>
       <span class="small">${need}</span>${!done ? bars : ""}</div></li>`;
   }).join("")}</ol>`;
-  const tip = cur >= 1 && cur < 3 ? `<p class="small muted">Tip: trainee shifts count when you're the experienced volunteer on a job with a trainee. On <b>Open jobs</b>, pick <b>Trainee needs a partner</b> to find them.</p>` : "";
-  const progress = `<h2 style="font-size:1.3rem">Your path</h2>${ladder}${tip}`;
+  const tip = cur >= 1 && cur < 3 ? `<p class="small muted">Tip: every job you work that has a trainee on the crew counts as one trainee shift supervised. On <b>Open jobs</b>, pick <b>Trainee needs a supervisor</b> to find them.</p>` : "";
+  const how = `<div class="howlevels"><b>How it works</b>
+    <p><b>Trainees</b> have finished online training. Their first ${SHADOW_SHIFTS_NEEDED} jobs are <b>supervised shifts</b>: there's always a Community Volunteer or above on the crew.</p>
+    <p><b>Community Volunteers and above</b> can take any spot and supervise trainees. Every job you work that has a trainee on it counts as one <b>trainee shift supervised</b>.</p>
+    <p>At most half of any crew can be trainees, so every trainee has a supervisor.</p></div>`;
+  const progress = `<h2 style="font-size:1.3rem">Your path</h2>${how}${ladder}${tip}`;
   const stat = (cls, icon, n, label) => `<div class="stat ${cls}"><span class="sico">${icon}</span><div><b>${n}</b><span>${label}</span></div></div>`;
   return `<div class="head"><div><h1>My record</h1><p>${esc(v.name)} · ${esc(v.uni)}. Handy for school service hours and applications.</p></div><button class="btn ghost noprint" data-act="print">Print or save as PDF</button></div>
   <section class="card stack levelcard"><div class="row">${levelChip(v)}${v.trainedAt ? `<span class="small muted">Volunteer since ${fmtDate(v.trainedAt.slice(0, 10))}</span>` : ""}</div>${progress}</section>
@@ -843,7 +853,7 @@ function volunteerView() {
   const v = S.me, sc = S.myShadow;
   const [doneCount, nowStep] = { pending: [1, 1], declined: [1, -1], approved: [2, 2], trainee: [3, 3], experienced: [5, -1] }[v.status];
   const steps = [["Apply", "Send your application"], ["Approval", "An admin reviews it"], ["Online training", "Modules and waiver"],
-    ["Shadow shifts", v.status === "trainee" ? `${sc} of ${SHADOW_SHIFTS_NEEDED} done` : `${SHADOW_SHIFTS_NEEDED} jobs with an experienced volunteer`], ["Community Volunteer", "Can lead new volunteers"]];
+    ["Supervised shifts", v.status === "trainee" ? `${sc} of ${SHADOW_SHIFTS_NEEDED} done` : `${SHADOW_SHIFTS_NEEDED} jobs with a supervisor on the crew`], ["Community Volunteer", "Can supervise trainees"]];
   const stepper = `<ol class="steps">${steps.map(([b, s], i) => `<li class="${i < doneCount ? "done" : ""} ${i === nowStep ? "now" : ""}"><b>${b}</b>${s}</li>`).join("")}</ol>`;
   let body = "";
   if (v.status === "pending") body = `<div class="card stack"><h2>Thanks, ${esc(first(v.name))}. Your application is in.</h2>
@@ -851,7 +861,7 @@ function volunteerView() {
   else if (v.status === "declined") body = `<div class="card stack"><h2>Application not approved</h2>
     <p class="muted">Thanks for your interest in 1Yard. Your application wasn't approved this season. Contact the team if you have questions.</p></div>`;
   else if (v.status === "approved") body = trainingView() + lockedBoard();
-  else if (S.volPage === "vboard") return `<div class="head"><div><h1>Open jobs</h1><p>Every job needs 2 volunteers. If a job has no one yet, you pick the exact time from the days the client is free. Bring your own gloves; the client provides the tools.</p></div><button class="btn" data-act="reload">${ic("refresh")} Refresh</button></div>` + openBoard(v);
+  else if (S.volPage === "vboard") return `<div class="head"><div><h1>Open jobs</h1><p>Each job shows how many volunteers it needs (usually 2). If a job has no one yet, you pick the exact time from the days the client is free. Bring your own gloves; the client provides the tools.</p></div><button class="btn" data-act="reload">${ic("refresh")} Refresh</button></div>` + openBoard(v);
   else if (S.volPage === "vrecord" || S.volPage === "vhours") return recordView(v);
   else if (S.volPage === "vcommunity") return communityView();
   else body = myJobsView(v, sc);
@@ -875,7 +885,7 @@ function trainingView() {
     </div>
     <label class="check" style="max-width:480px"><input type="checkbox" id="done-training"> I have read and understood the 1Yard Volunteer Training Guide</label>
     <div class="row"><button class="btn" data-act="finish" id="finish" disabled>Finish training</button><span class="small muted" id="finish-hint">Upload your waiver and tick the box to continue.</span></div>
-    <div class="note small">Next: you'll be a <b>trainee</b>. You need ${SHADOW_SHIFTS_NEEDED} jobs alongside an experienced volunteer before you're fully trained.</div>
+    <div class="note small">Next: you'll be a <b>trainee</b>. Your first ${SHADOW_SHIFTS_NEEDED} jobs are supervised shifts, with a Community Volunteer or above on the crew. After that you're a Community Volunteer.</div>
   </section>`;
 }
 const lockedBoard = () => `<div class="lock"><div style="font-size:1.8rem">🔒</div><h3>The job board is locked</h3><p class="muted small">Only volunteers who've finished training can see and sign up for jobs.</p></div>`;
@@ -883,8 +893,8 @@ function myJobsView(v, sc) {
   const mine = S.jobs.filter((j) => crew(j.id).some((s) => s.vid === v.id)).sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
   const total = S.history.reduce((t, h) => t + +h.hours, 0);
   const intro = v.status === "trainee"
-    ? `<div class="note"><b>You're a trainee: ${sc} of ${SHADOW_SHIFTS_NEEDED} shadow shifts done.</b> You can take a job that's empty or that already has an experienced volunteer. Once you sign up for an empty job, only an experienced volunteer can take the second spot.</div>`
-    : `<div class="note"><b>You're a ${LEVELS[levelOf(v)].name}.</b> Jobs where a trainee is waiting for a partner are shown first on Open jobs. Trainees can't go without you.</div>`;
+    ? `<div class="note"><b>You're a trainee: ${sc} of ${SHADOW_SHIFTS_NEEDED} supervised shifts done.</b> A supervised shift is a job with a Community Volunteer or above on the crew. At most half of any crew can be trainees, so you're never without a supervisor. Once a job's trainee spots are taken, the rest are for supervisors.</div>`
+    : `<div class="note"><b>You're a ${LEVELS[levelOf(v)].name}.</b> You can supervise trainees. Jobs where a trainee is waiting for a supervisor are shown first on Open jobs. Trainees can't go without you.</div>`;
   const prefsNote = !v.prefsSetAt ? `<div class="note"><b>New:</b> tell us if you have a car, and whether to show your phone or email in the volunteer directory. <button class="linkbtn" data-act="volNav" data-id="vaccount">Update in Account</button></div>` : "";
   return `${prefsNote}${intro}
   <div class="stats" style="grid-template-columns:repeat(3,minmax(0,1fr))">
@@ -903,7 +913,7 @@ function openBoard(v) {
   if (S.boardFilter === "exp") open = open.filter(needsExperienced);
   const rank = (j) => v.status === "experienced" ? (needsExperienced(j) ? 0 : 1) : (canJoin(v, j).ok ? 0 : 1);
   open.sort((a, b) => rank(a) - rank(b) || sortKey(a).localeCompare(sortKey(b)));
-  const filters = [["all", "All open jobs"], ["skills", "Fits my skills"], ...(v.status === "experienced" ? [["exp", "Trainee needs a partner"]] : [])];
+  const filters = [["all", "All open jobs"], ["skills", "Fits my skills"], ...(v.status === "experienced" ? [["exp", "Trainee needs a supervisor"]] : [])];
   return `<div class="filters">${filters.map(([k, n]) => `<button data-act="boardFilter" data-id="${k}" aria-pressed="${S.boardFilter === k}">${n}</button>`).join("")}</div>
     ${open.length ? `<div class="jobs">${open.map((j) => openJobCard(j, v)).join("")}</div>` : `<div class="empty">No open jobs right now. Check back soon.</div>`}`;
 }
@@ -928,7 +938,7 @@ function picker(j, cur, verb) {
   return `<div class="picker">
     <label class="lbl" for="pk-${j.id}">Pick a start time (job takes about ${j.hours}h)</label>
     <select id="pk-${j.id}">${timeChoices(j, cur)}</select>
-    <p class="small muted">Your partner will sign up for the time you choose.</p>
+    <p class="small muted">Everyone else on the crew signs up for the time you choose.</p>
     <div class="row"><button class="btn" data-act="choose" data-id="${j.id}">${verb}</button><button class="btn ghost" data-act="pickCancel">Cancel</button></div>
   </div>`;
 }
@@ -945,13 +955,14 @@ function openJobCard(j, v) {
   </article>`;
 }
 function myJobCard(j, v) {
-  const c = crew(j.id), me = c.find((s) => s.vid === v.id), partner = c.find((s) => s.vid !== v.id), full = c.length >= 2, pv = partner && vol(partner.vid);
+  const c = crew(j.id), me = c.find((s) => s.vid === v.id), others = c.filter((s) => s.vid !== v.id), full = isFull(j), partner = others[0];
+  const mates = others.map((s) => vol(s.vid)).filter(Boolean), traineesLeft = !me.asTrainee && others.some((s) => s.asTrainee) && others.filter((s) => !s.asTrainee).length === 0;
   const started = hasStarted(j), soon = isLocked(j) && startsAt(j) - Date.now() < 864e5;
   const cant = started ? "" : `<button class="btn danger" data-act="leave" data-id="${j.id}">I can't make it</button>`;
   let foot;
   if (S.confirm === "leave:" + j.id) foot = `<div class="confirm"><b>Can't make it?</b>
-    <span class="small">${j.crewedAt ? "The time stays the same and your spot goes back on the job board. Your partner and the 1Yard admins will be told." : partner ? "Your spot goes back on the job board and your partner will be told." : "The client's days open up again for other volunteers."}${partner && !me.asTrainee && partner.asTrainee ? " Your trainee partner will need a new experienced volunteer." : ""}</span>
-    ${soon && j.crewedAt ? `<span class="small"><b>This is short notice. Please also text your partner${pv ? ` (${esc(pv.phone)})` : ""}.</b></span>` : ""}
+    <span class="small">${j.crewedAt ? "The time stays the same and your spot goes back on the job board. The rest of your crew and the 1Yard admins will be told." : partner ? "Your spot goes back on the job board and the rest of your crew will be told." : "The client's days open up again for other volunteers."}${traineesLeft ? " The trainee on this job will need a new supervisor." : ""}</span>
+    ${soon && j.crewedAt ? `<span class="small"><b>This is short notice. Please also text your crew${mates.length ? ` (${mates.map((m) => esc(m.phone)).filter(Boolean).join(", ")})` : ""}.</b></span>` : ""}
     <label class="small" for="lr-${j.id}">Reason <span class="muted">(optional · only admins see it)</span></label>
     <textarea id="lr-${j.id}" rows="2" placeholder="e.g. My exam was moved"></textarea>
     <div class="row"><button class="btn danger" data-act="leaveYes" data-id="${j.id}">Yes, take me off this job</button><button class="btn ghost" data-act="confirmNo">Keep it</button></div></div>`;
@@ -968,8 +979,8 @@ function myJobCard(j, v) {
     ${j.timeChangedAt ? `<div class="alertline">⚠ An admin changed the time ${ago(j.timeChangedAt)}. It's now ${whenText(j)}.</div>` : ""}
     ${jobFacts(j, v, true)}
     ${slots(j)}
-    ${pv ? `<div class="picker" style="gap:2px"><span class="label">Your partner</span><b>${esc(pv.name)}</b>${pv.hasCar ? `<span class="small">🚗 Has a car they're willing to use</span>` : ""}<span class="small">📞 ${esc(pv.phone)} · ✉️ ${esc(pv.email)}</span><span class="small muted">Running late? Text your partner and let the 1Yard admin know.</span></div>`
-      : `<p class="small">${j.crewedAt ? "Your partner can't make it anymore. We're finding a new one for the same time. Please don't go alone." : `${needsExperienced(j) ? "Waiting for an experienced volunteer to join you." : "Waiting for a second volunteer."} You can change the time until someone joins.`}</p>`}
+    ${full ? `<div class="picker" style="gap:8px"><span class="label">Your crew</span>${mates.map((m) => `<div style="display:grid;gap:2px"><b>${esc(m.name)}</b>${m.hasCar ? `<span class="small">🚗 Has a car they're willing to use</span>` : ""}<span class="small">📞 ${esc(m.phone)} · ✉️ ${esc(m.email)}</span></div>`).join("")}<span class="small muted">Running late? Text your crew and let the 1Yard admin know.</span></div>`
+      : `<p class="small">${j.crewedAt ? "Someone on your crew can't make it anymore. We're finding a new volunteer for the same time. Please don't go short-handed without checking with an admin." : `Waiting for ${spotsOf(j) - c.length} more volunteer${spotsOf(j) - c.length === 1 ? "" : "s"}${needsExperienced(j) ? " (a supervisor: Community Volunteer or above)" : ""}.${others.length ? "" : " You can change the time until someone joins."}`}</p>`}
     ${cal}
     ${foot}
   </article>`;
@@ -1049,6 +1060,8 @@ function reviewCard(j) {
     <div class="side-panel">
       <span class="label">Publish to volunteers</span>
       <p class="small muted">Volunteers will see the client's days and pick an exact start time. Fix the days with Edit details if they're wrong.</p>
+      <label>Volunteers needed<select id="sp-${j.id}">${[2, 3, 4, 5, 6].map((n) => `<option value="${n}" ${n === spotsOf(j) ? "selected" : ""}>${n} volunteers</option>`).join("")}</select></label>
+      <span class="small muted">At most half can be trainees.</span>
       <label>Estimated time<select id="h-${j.id}">${[1, 2, 3, 4].map((h) => `<option value="${h}" ${h === 2 ? "selected" : ""}>${h} hour${h > 1 ? "s" : ""}</option>`).join("")}</select></label>
       <button class="btn" data-act="publish" data-id="${j.id}">Publish to volunteers</button>
       <button class="btn danger" data-act="reject" data-id="${j.id}">Decline request</button>
@@ -1071,6 +1084,7 @@ function editForm(j) {
       <div class="field"><label class="lbl" for="e-postal">Postal code</label><input type="text" id="e-postal" value="${esc(c.postal)}"></div>
       <div class="field"><label class="lbl" for="e-area">Neighbourhood</label><input type="text" id="e-area" value="${esc(c.area)}"></div>
     </div>
+    <div class="field"><label class="lbl" for="e-spots">Volunteers needed</label><select class="in" id="e-spots" style="max-width:220px">${[2, 3, 4, 5, 6].filter((n) => n >= crew(j.id).length).map((n) => `<option value="${n}" ${n === spotsOf(j) ? "selected" : ""}>${n} volunteers</option>`).join("")}</select><span class="small muted">At most half can be trainees. Can't go below the volunteers already signed up.</span></div>
     ${crew(j.id).length ? `<p class="small muted">Days are locked because a volunteer has signed up. Use <b>Change time</b> on the Jobs tab instead.</p>`
       : `<div class="field"><span class="lbl">Days the client is free (up to 4)</span>${windowRows("ew", j.windows)}</div>`}
     <div class="field"><span class="lbl">Work needed</span><div class="checks">${SERVICES.map((x) => box("e-svc", x.id, x.name, j.services.includes(x.id))).join("")}</div></div>
@@ -1100,7 +1114,7 @@ function callsView(items) {
         <div class="row">${kind === "tell" ? `<span class="chip c-green">Crew confirmed</span>` : kind === "drop" ? `<span class="chip c-amber">Volunteer dropped out</span>` : `<span class="chip c-rose">Needs new dates</span>`}<span class="small muted">${esc(jobTitle(j))} · ${esc(c.area)}</span>${waitChip(j)}</div>
         <h3>${kind === "tell" ? `Tell ${esc(c.name)} when volunteers are coming` : kind === "drop" ? `Let ${esc(c.name)} know a volunteer can't come` : `Ask ${esc(c.name)} for new days`}</h3>
         <div class="phone">📞 ${esc(c.phone || c.email)}</div>
-        ${kind === "tell" ? `<p><b>${names.map(esc).join(" and ")}</b> will come <b>${whenText(j, true)}</b> (about ${j.hours}h).</p>`
+        ${kind === "tell" ? `<p><b>${joinNames(names.map(esc))}</b> will come <b>${whenText(j, true)}</b> (about ${j.hours}h).</p>`
           : kind === "drop" ? `<p>The visit is still set for <b>${whenText(j, true)}</b>. ${names.length ? `<b>${esc(names[0])}</b> is still coming; we're finding a second volunteer.` : "Both spots are open again on the job board."} If the time no longer works, use <b>Change time</b>.</p>`
           : `<p>None of their days got a full crew: ${j.windows.map((x) => fmtDate(x.date)).join(", ")}.${crew(j.id).length ? ` ${esc(names[0])} signed up alone and will be released.` : ""}</p>`}
         ${j.attempts ? `<p class="small muted">No answer ${j.attempts}× · last tried ${ago(j.lastAttemptAt)}</p>` : ""}
@@ -1194,7 +1208,7 @@ function volsTable(people) {
   const list = [...people].sort((a, b) => order[a.status] - order[b.status]);
   if (!list.length) return `<div class="empty">No volunteers yet.</div>`;
   return `<div class="card table-wrap"><table>
-    <thead><tr><th>Volunteer</th><th>Level</th><th>Shadow shifts</th><th>Jobs done</th><th>Hours</th><th>Trainees supervised</th><th>❤️</th><th>Car</th><th>Waiver</th><th></th></tr></thead>
+    <thead><tr><th>Volunteer</th><th>Level</th><th>Supervised shifts</th><th>Jobs done</th><th>Hours</th><th>Trainee shifts supervised</th><th>❤️</th><th>Car</th><th>Waiver</th><th></th></tr></thead>
     <tbody>${list.map((v) => `<tr>
       <td><b>${esc(v.name)}</b><div class="muted small">${esc(v.uni)} · ${esc(v.year)}<br>${esc(v.email)} · ${esc(v.phone)}</div></td>
       <td><select class="in" data-level="${v.id}" aria-label="Level for ${esc(v.name)}" style="min-width:200px">${levelOptions(v)}</select></td>
@@ -1290,7 +1304,7 @@ const A = {
   publish: async (id) => {
     const j = job(id);
     if (!liveWindows(j).length) return "All of this client's days have passed. Use Edit details to add new ones.";
-    await upd("jobs", id, { status: "scheduled", hours: +$("#h-" + id).value, published_at: now() }); await loadAdmin();
+    await upd("jobs", id, { status: "scheduled", hours: +$("#h-" + id).value, spots: +$("#sp-" + id).value, published_at: now() }); await loadAdmin();
     return `Published with ${liveWindows(job(id)).length} day options. Volunteers can now sign up.`;
   },
   reject: async (id) => { await upd("jobs", id, { status: "declined" }); await loadAdmin(); return "Request declined. Remember to call the client."; },
@@ -1323,7 +1337,7 @@ const A = {
     const services = checked("e-svc");
     if (!services.length) return toast("Pick at least one type of work."), SKIP;
     if (!val("address")) return toast("The address can't be empty."), SKIP;
-    const patch = { services, tools: Object.fromEntries(checked("e-tool").map((t) => [t, true])), flags: checked("e-flag"), notes: val("notes"), edited_at: now() };
+    const patch = { spots: +$("#e-spots").value, services, tools: Object.fromEntries(checked("e-tool").map((t) => [t, true])), flags: checked("e-flag"), notes: val("notes"), edited_at: now() };
     if ($("#ew-date-0")) { const wins = readWindows("ew"); if (!wins.length) return toast("Add at least one day the client is free."), SKIP; patch.windows = wins; }
     await upd("clients", j.clientId, { name: val("name"), phone: val("phone"), phone_key: val("phone").replace(/\D/g, ""), email: val("email").toLowerCase(), contact: $("#e-contact").value, address: val("address"), postal: val("postal").toUpperCase(), area: val("area") || "Kingston" });
     await upd("jobs", id, patch);
@@ -1395,7 +1409,7 @@ const A = {
     const promoted = await rpc("finish_job", { p_job: id, p_hours: +$("#dh-" + id).value, p_note: $("#dn-" + id).value.trim() || null, p_concern: concern, p_concern_detail: concern ? detail : null });
     S.confirm = null;
     await refresh();
-    return promoted.length ? `Job done. ${promoted.join(" and ")} ${promoted.length > 1 ? "are" : "is"} now experienced!` : "Job marked as done.";
+    return promoted.length ? `Job done. ${promoted.join(" and ")} ${promoted.length > 1 ? "are now Community Volunteers" : "is now a Community Volunteer"}!` : "Job marked as done.";
   },
 
   // --- volunteer
@@ -1415,7 +1429,7 @@ const A = {
     const mine = crew(id).some((s) => s.vid === S.me.id);
     await rpc(mine ? "change_my_time" : "join_job", { p_job: id, p_date: date, p_start: start });
     S.picking = null; await refresh();
-    return mine ? `Time changed to ${whenText(job(id))}.` : `You're signed up for ${whenText(job(id))}. ${S.me.status === "trainee" ? "Now waiting for an experienced volunteer." : "Waiting for a second volunteer."}`;
+    return mine ? `Time changed to ${whenText(job(id))}.` : `You're signed up for ${whenText(job(id))}. ${S.me.status === "trainee" ? "A supervisor (Community Volunteer or above) will join you." : isFull(job(id)) ? "The crew is complete." : "Waiting for the rest of the crew."}`;
   },
   join: async (id) => { await rpc("join_job", { p_job: id }); await refresh(); return isFull(job(id)) ? "You're signed up. The crew is complete." : "You're signed up."; },
   leave: (id) => { S.confirm = "leave:" + id; },
@@ -1548,7 +1562,7 @@ document.addEventListener("change", async (e) => {
     catch (err) { toast(friendly(err, "Couldn't save that.")); render(); }
     return;
   }
-  // Admin override of a volunteer's level (e.g. skip shadow shifts for someone experienced).
+  // Admin override of a volunteer's level (e.g. skip supervised shifts for someone with experience).
   if (e.target.dataset.level) {
     const v = vol(e.target.dataset.level), pick = e.target.value, sel = e.target;
     const status = ["pending", "approved", "declined", "trainee"].includes(pick) ? pick : "experienced";

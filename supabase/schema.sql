@@ -73,6 +73,10 @@ alter table public.jobs add column if not exists actual_hours numeric(4,1);
 -- First time the crew reached 2 (the client is told this time, so it stays locked
 -- even if a volunteer drops out), and the last drop-out after that.
 alter table public.jobs add column if not exists crewed_at timestamptz;
+-- How many volunteers the job needs (set by the admin when publishing). At most half can be trainees.
+alter table public.jobs add column if not exists spots int not null default 2;
+alter table public.jobs drop constraint if exists jobs_spots_check;
+alter table public.jobs add constraint jobs_spots_check check (spots between 2 and 6);
 -- True after an admin set a temporary password, until the person picks their own.
 alter table public.profiles add column if not exists temp_password boolean not null default false;
 -- Level shown on the site (trainee, community, senior, team_lead, captain), car, and
@@ -227,7 +231,7 @@ begin
   return false;
 end $$;
 
--- Completed jobs where this volunteer went as a trainee alongside an experienced volunteer.
+-- Supervised shifts: completed jobs where this volunteer was a trainee with a Community Volunteer or above on the crew.
 create or replace function public.shadow_count(vid uuid) returns int
 language sql stable security definer set search_path = public as $$
   select count(*)::int from job_signups s join jobs j on j.id = s.job_id
@@ -245,7 +249,7 @@ $$;
 create or replace function public.needs_new_dates(j public.jobs) returns boolean
 language sql stable security definer set search_path = public as $$
   select j.status = 'scheduled'
-     and (select count(*) from job_signups where job_id = j.id) < 2
+     and (select count(*) from job_signups where job_id = j.id) < j.spots
      and case
            when j.date is not null and (j.crewed_at is not null or exists (select 1 from job_signups where job_id = j.id))
              then j.date <= local_today()
@@ -358,6 +362,15 @@ create or replace function public.tool_names(tools jsonb) returns text language 
   select string_agg(case k when 'rake' then 'rake' when 'bags' then 'yard waste bags' when 'mower' then 'lawn mower'
            when 'shears' then 'garden clippers' when 'wheelbarrow' then 'wheelbarrow' else k end, ', ' order by k)
   from jsonb_each(coalesce(tools, '{}')) e(k, v) where v = 'true'::jsonb $$;
+-- 'Lee', 'Lee and Kim', 'Lee, Kim and Ana'
+create or replace function public.join_names(n text[]) returns text language sql immutable as $$
+  select case coalesce(array_length(n, 1), 0) when 0 then '' when 1 then n[1]
+    else array_to_string(n[1:array_length(n, 1) - 1], ', ') || ' and ' || n[array_length(n, 1)] end $$;
+-- Everyone else on the crew, first names, with a car mark.
+create or replace function public.crew_others(p_job uuid, me uuid) returns text
+language sql stable security definer set search_path = public as $$
+  select join_names(array_agg(first_name(p.name) || case when p.has_car then ' (🚗 has a car)' else '' end order by s.created_at))
+  from job_signups s join profiles p on p.id = s.volunteer_id where s.job_id = p_job and s.volunteer_id <> me $$;
 create or replace function public.job_address(c public.clients) returns text language sql immutable as $$
   select c.address || case when coalesce(c.postal, '') <> '' then ', ' || c.postal else '' end $$;
 
@@ -424,19 +437,17 @@ begin
   select * into j from jobs where id = p_job;
   select * into c from clients where id = j.client_id;
   addr := job_address(c); tools := tool_names(j.tools);
-  select string_agg(first_name(p.name), ' and ' order by s.created_at), string_agg(s.volunteer_id::text, ':' order by s.volunteer_id)
+  select join_names(array_agg(first_name(p.name) order by s.created_at)), string_agg(s.volunteer_id::text, ':' order by s.volunteer_id)
     into names, key from job_signups s join profiles p on p.id = s.volunteer_id where s.job_id = p_job;
   key := 'crew:' || p_job || ':' || key || ':' || j.date || ':' || j.start_time;
-  for v in select p.id, p.name, p.email,
-             (select pp.name from job_signups ss join profiles pp on pp.id = ss.volunteer_id where ss.job_id = p_job and ss.volunteer_id <> p.id limit 1) partner,
-             coalesce((select pp.has_car from job_signups ss join profiles pp on pp.id = ss.volunteer_id where ss.job_id = p_job and ss.volunteer_id <> p.id limit 1), false) partner_car
+  for v in select p.id, p.name, p.email, crew_others(p_job, p.id) others
            from job_signups s join profiles p on p.id = s.volunteer_id where s.job_id = p_job loop
     perform notify(v.id, 'crew_confirmed', p_job,
-      'Crew confirmed: you and ' || first_name(v.partner) || case when v.partner_car then ' (🚗 has a car)' else '' end || ', ' || fmt_when(j.date, j.start_time, false) || ' at ' || c.address || '.',
+      'Crew confirmed: you and ' || v.others || ', ' || fmt_when(j.date, j.start_time, false) || ' at ' || c.address || '.',
       'job:' || p_job, false, key || ':' || v.id);
     perform queue_email(v.email, 'You''re confirmed: ' || fmt_when(j.date, j.start_time, false), 'Your crew is set',
       array['Hi ' || first_name(v.name) || ',',
-            'You and ' || v.partner || ' are confirmed for ' || lower(svc_names(j.services)) || '.',
+            'You and ' || v.others || ' are confirmed for ' || lower(svc_names(j.services)) || '.',
             'When: ' || fmt_when(j.date, j.start_time) || ' (about ' || j.hours || ' hour' || case when j.hours = 1 then '' else 's' end || ')',
             'Where: ' || addr,
             'The client provides the tools' || coalesce(' (' || tools || ')', '') || '. Bring your own gloves.',
@@ -533,7 +544,7 @@ begin
         'id', j.id, 'services', j.services, 'tools', j.tools, 'flags', j.flags,
         'windows', j.windows, 'status', j.status, 'date', j.date, 'start_time', j.start_time,
         'hours', j.hours, 'time_changed_at', j.time_changed_at, 'created_at', j.created_at,
-        'crewed_at', j.crewed_at,
+        'crewed_at', j.crewed_at, 'spots', j.spots,
         'needs_new_dates', needs_new_dates(j),
         'area', c.area,
         'client_name',  case when m.mine then c.name end,
@@ -556,11 +567,11 @@ begin
 end $$;
 
 -- Sign up for a job. The first volunteer must pick a date + start inside the
--- client's windows; the second joins at that time. Never two trainees.
+-- client's windows; everyone else joins at that time. At most half the crew are trainees.
 -- If the client was already given a time (crew was full once), everyone joins at that time.
 create or replace function public.join_job(p_job uuid, p_date date default null, p_start text default null) returns void
 language plpgsql security definer set search_path = public as $$
-declare me profiles; j jobs; n int; has_trainee boolean;
+declare me profiles; j jobs; n int; trainees int;
 begin
   me := require_trained();
   select * into j from jobs where id = p_job for update;
@@ -568,9 +579,12 @@ begin
   if exists (select 1 from job_signups where job_id = p_job and volunteer_id = me.id) then
     raise exception 'You''re already on this job';
   end if;
-  select count(*), coalesce(bool_or(as_trainee), false) into n, has_trainee from job_signups where job_id = p_job;
-  if n >= 2 then raise exception 'This job is full'; end if;
-  if me.status = 'trainee' and has_trainee then raise exception 'This spot is for experienced volunteers only'; end if;
+  select count(*), count(*) filter (where as_trainee) into n, trainees from job_signups where job_id = p_job;
+  if n >= j.spots then raise exception 'This job is full'; end if;
+  -- At most half the crew can be trainees, so every trainee has a supervisor.
+  if me.status = 'trainee' and trainees + 1 > j.spots / 2 then
+    raise exception 'The trainee spots on this job are taken. The rest are for Community Volunteers and above.';
+  end if;
   if n = 0 and j.crewed_at is null then
     if p_date is null or p_date <= local_today() or not time_fits(j.windows, p_date, p_start, j.hours) then
       raise exception 'Pick a time inside the client''s days';
@@ -656,20 +670,25 @@ end $$;
 
 -- Crew member or admin marks a full job done and logs how long it took
 -- (counts as volunteer hours for both crew members). Trainees who now have
--- enough shadow shifts are promoted. Returns the names of anyone promoted.
+-- enough supervised shifts are promoted. Returns the names of anyone promoted.
 drop function if exists public.finish_job(uuid);
 drop function if exists public.finish_job(uuid, numeric);
 create or replace function public.finish_job(p_job uuid, p_hours numeric default null, p_note text default null,
   p_concern text default null, p_concern_detail text default null) returns text[]
 language plpgsql security definer set search_path = public as $$
-declare promoted text[]; me profiles; rid uuid; note text := left(trim(coalesce(p_note, '')), 2000);
+declare promoted text[]; me profiles; rid uuid; need int; note text := left(trim(coalesce(p_note, '')), 2000);
   detail text := left(trim(coalesce(p_concern_detail, '')), 2000);
 begin
   if p_hours is not null and (p_hours < 0.5 or p_hours > 12) then raise exception 'Hours should be between 0.5 and 12'; end if;
   if not (is_admin() or exists (select 1 from job_signups where job_id = p_job and volunteer_id = auth.uid())) then
     raise exception 'Only the crew or an admin can finish this job';
   end if;
-  if (select count(*) from job_signups where job_id = p_job) < 2 then raise exception 'The job needs a full crew first'; end if;
+  -- Volunteers need the whole crew; an admin can close a job that ran short (at least 2).
+  need := (select spots from jobs where id = p_job);
+  if is_admin() then need := 2; end if;
+  if (select count(*) from job_signups where job_id = p_job) < need then
+    raise exception 'The job needs a full crew first';
+  end if;
   -- Volunteers can only mark it done once the scheduled start time has passed (Kingston time). Admins any time.
   if not is_admin() and exists (select 1 from jobs where id = p_job
        and (date + start_time::time) > (now() at time zone 'America/Toronto')) then
@@ -802,7 +821,7 @@ language sql stable security definer set search_path = public as $$
     'services', j.services, 'tools', j.tools, 'windows', j.windows, 'status', j.status,
     'date', j.date, 'start_time', j.start_time, 'created_at', j.created_at,
     'needs_new_dates', needs_new_dates(j),
-    'crewed', j.crewed_at is not null,
+    'crewed', j.crewed_at is not null, 'spots', j.spots,
     'thanked', exists (select 1 from thanks t where t.job_id = j.id and t.from_client and t.source = 'request'),
     'crew', coalesce((select jsonb_agg(split_part(p.name, ' ', 1) order by s.created_at)
                       from job_signups s join profiles p on p.id = s.volunteer_id where s.job_id = j.id), '[]'))
@@ -846,7 +865,7 @@ begin
       array['Hi ' || first_name(new.name) || ',',
             'Thanks for applying. You''re approved to volunteer with 1Yard.',
             'Next steps: log in, read the two training guides, then download the waiver, sign it and upload it. After that you can pick jobs as a trainee.',
-            'Your first 2 jobs are with an experienced volunteer, so you''re never on your own while you learn.'],
+            'Your first 2 jobs are supervised shifts with a Community Volunteer or above, so you''re never on your own while you learn.'],
       'Log in to 1Yard', site_url() || '/?go=vhome', 'approved', null, 'approved:' || new.id);
   end if;
   return null;
@@ -865,6 +884,18 @@ begin
 end $$;
 drop trigger if exists job_new on public.jobs;
 create trigger job_new after insert on public.jobs for each row execute function public.trg_job_new();
+
+-- Spots can't drop below the volunteers already signed up.
+create or replace function public.trg_job_spots_guard() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.spots < (select count(*) from job_signups where job_id = new.id) then
+    raise exception 'More volunteers are signed up than that. Remove someone first.';
+  end if;
+  return new;
+end $$;
+drop trigger if exists job_spots_guard on public.jobs;
+create trigger job_spots_guard before update of spots on public.jobs for each row execute function public.trg_job_spots_guard();
 
 -- Cancellations, admin time changes and hours corrections.
 create or replace function public.trg_job_change() returns trigger
@@ -918,6 +949,13 @@ begin
       'See your request', site_url() || '/?request=' || new.access_token, 'client_time', new.id, key);
   end if;
 
+  -- Fewer spots can make the crew complete.
+  if new.status = 'scheduled' and new.spots < old.spots and new.date is not null
+     and (select count(*) from job_signups where job_id = new.id) = new.spots then
+    update jobs set crewed_at = coalesce(crewed_at, now()), told_at = null where id = new.id;
+    perform on_crew_full(new.id);
+  end if;
+
   if old.status = 'done' and new.status = 'done' and old.actual_hours is distinct from new.actual_hours then
     for v in select p.* from job_signups s join profiles p on p.id = s.volunteer_id where s.job_id = new.id loop
       perform notify(v.id, 'hours', new.id, 'An admin updated the hours for ' || lower(svc_names(new.services)) || ' on '
@@ -933,7 +971,7 @@ create trigger job_change after update on public.jobs for each row execute funct
 create or replace function public.trg_signup_new() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
-  if (select count(*) from job_signups where job_id = new.job_id) = 2 then
+  if (select count(*) from job_signups where job_id = new.job_id) = (select spots from jobs where id = new.job_id) then
     update jobs set crewed_at = coalesce(crewed_at, now()), told_at = null where id = new.job_id;
     perform on_crew_full(new.job_id);
   end if;
@@ -988,23 +1026,22 @@ begin
     for j in select * from jobs where status = 'scheduled' and date = local_today() + 1 loop
       select * into c from clients where id = j.client_id;
       select count(*) into n from job_signups where job_id = j.id;
-      if n < 2 then
+      if n < j.spots then
         perform notify_admins('short_crew', j.id, c.name || '''s job tomorrow (' || fmt_time(j.start_time) || ') still needs '
-          || case when n = 0 then '2 volunteers' else 'a volunteer' end || '. Find someone or call the client.', 'calls', true, 'short:' || j.id || ':' || j.date);
+          || case when j.spots - n = 1 then 'a volunteer' else (j.spots - n) || ' volunteers' end || '. Find someone or call the client.', 'calls', true, 'short:' || j.id || ':' || j.date);
         continue;
       end if;
       addr := job_address(c); tools := tool_names(j.tools);
-      select string_agg(first_name(p.name), ' and ' order by s.created_at) into names
+      select join_names(array_agg(first_name(p.name) order by s.created_at)) into names
         from job_signups s join profiles p on p.id = s.volunteer_id where s.job_id = j.id;
-      for v in select p.name, p.email,
-                 (select pp.name from job_signups ss join profiles pp on pp.id = ss.volunteer_id where ss.job_id = j.id and ss.volunteer_id <> p.id limit 1) partner
+      for v in select p.name, p.email, crew_others(j.id, p.id) partner
                from job_signups s join profiles p on p.id = s.volunteer_id where s.job_id = j.id loop
         perform queue_email(v.email, 'Tomorrow: ' || svc_names(j.services) || ' at ' || fmt_time(j.start_time), 'See you tomorrow',
           array['Hi ' || first_name(v.name) || ',',
                 'Reminder: you and ' || v.partner || ' are helping with ' || lower(svc_names(j.services)) || ' tomorrow, ' || fmt_when(j.date, j.start_time) || '.',
                 'Where: ' || addr,
                 'Bring your gloves. The client provides the tools.',
-                'Running late or something came up? Text your partner and call the 1Yard admin.'],
+                'Running late or something came up? Text your crew and call the 1Yard admin.'],
           'Open the job', site_url() || '/?go=job:' || j.id, 'reminder', j.id, 'remind:' || j.id || ':' || j.date);
       end loop;
       perform queue_email(c.email, 'Reminder: your volunteers come tomorrow at ' || fmt_time(j.start_time), 'See you tomorrow',
@@ -1089,7 +1126,7 @@ language sql security definer set search_path = public as $$
 
 -- ---------- Levels, car, directory, thank-yous ------------------------
 -- Levels: trainee → community → senior → team_lead → captain. The first four
--- follow from data (training, shadow shifts, hours, trainees supervised); Yard
+-- follow from data (training, supervised shifts, hours, trainee shifts supervised); Yard
 -- Captain is given by an admin. Levels only go up automatically; admins can set
 -- any level. Every change is logged in level_events.
 
@@ -1351,6 +1388,7 @@ revoke execute on function public.volunteer_board(), public.join_job(uuid, date,
   public.admin_publish_thanks(uuid, uuid, boolean) from public, anon;
 
 -- Internal helpers shouldn't be callable from the website.
+revoke execute on function public.trg_job_spots_guard(), public.crew_others(uuid, uuid) from public, anon, authenticated;
 revoke execute on function public.handle_new_user(), public.trg_profile_new(), public.trg_profile_status(),
   public.trg_job_new(), public.trg_job_change(), public.trg_signup_new(), public.trg_signup_gone(),
   public.notify(uuid, text, uuid, text, text, boolean, text), public.notify_admins(text, uuid, text, text, boolean, text),
