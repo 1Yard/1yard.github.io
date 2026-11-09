@@ -97,6 +97,12 @@ function shadowCount(vid) {
     S.signups.some((p) => p.jobId === s.jobId && p.vid !== vid && !p.asTrainee)).length;
 }
 const jobsDone = (vid) => S.signups.filter((s) => s.vid === vid && job(s.jobId)?.status === "done").length;
+// Already on another upcoming job whose time overlaps this one (same check as busy_then() on the server).
+function busyThen(v, j) {
+  const s0 = to_min(j.start), e0 = s0 + j.hours * 60;
+  return S.jobs.some((o) => o.id !== j.id && o.status === "scheduled" && o.date === j.date && o.start
+    && crew(o.id).some((c) => c.vid === v.id) && to_min(o.start) < e0 && s0 < to_min(o.start) + o.hours * 60);
+}
 // Mirrors join_job() on the server, so buttons show the right state. The server has the final say.
 function canJoin(v, j) {
   const c = crew(j.id);
@@ -105,6 +111,7 @@ function canJoin(v, j) {
   if (c.some((s) => s.vid === v.id)) return { ok: false, why: "You're on this job" };
   if (c.length >= spotsOf(j)) return { ok: false, why: "Full" };
   if (needsNewDates(j)) return { ok: false, why: "Waiting on new dates" };
+  if (isLocked(j) && busyThen(v, j)) return { ok: false, why: "You're on another job then" };
   if (v.status === "trainee" && needsExperienced(j)) return { ok: false, why: "Supervisor spots only" };
   return { ok: true };
 }

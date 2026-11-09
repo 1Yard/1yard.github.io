@@ -566,6 +566,14 @@ begin
   );
 end $$;
 
+-- True when the volunteer is already on another upcoming job whose time overlaps.
+create or replace function public.busy_then(vid uuid, skip_job uuid, d date, start text, hrs int) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from job_signups s join jobs o on o.id = s.job_id
+    where s.volunteer_id = vid and o.id <> skip_job and o.status = 'scheduled' and o.date = d and o.start_time is not null
+      and to_minutes(o.start_time) < to_minutes(start) + hrs * 60
+      and to_minutes(start) < to_minutes(o.start_time) + o.hours * 60) $$;
+
 -- Sign up for a job. The first volunteer must pick a date + start inside the
 -- client's windows; everyone else joins at that time. At most half the crew are trainees.
 -- If the client was already given a time (crew was full once), everyone joins at that time.
@@ -589,9 +597,14 @@ begin
     if p_date is null or p_date <= local_today() or not time_fits(j.windows, p_date, p_start, j.hours) then
       raise exception 'Pick a time inside the client''s days';
     end if;
+    if busy_then(me.id, p_job, p_date, p_start, j.hours) then
+      raise exception 'You''re already on another job at that time. Pick a different time.';
+    end if;
     update jobs set date = p_date, start_time = p_start, time_changed_at = null where id = p_job;
   elsif j.date is null or j.date <= local_today() then
     raise exception 'This job is waiting on new dates';
+  elsif busy_then(me.id, p_job, j.date, j.start_time, j.hours) then
+    raise exception 'You''re already on another job at that time.';
   end if;
   insert into job_signups (job_id, volunteer_id, as_trainee) values (p_job, me.id, me.status = 'trainee');
 end $$;
@@ -613,6 +626,9 @@ begin
   end if;
   if p_date <= local_today() or not time_fits(j.windows, p_date, p_start, j.hours) then
     raise exception 'Pick a time inside the client''s days';
+  end if;
+  if busy_then(auth.uid(), p_job, p_date, p_start, j.hours) then
+    raise exception 'You''re already on another job at that time. Pick a different time.';
   end if;
   update jobs set date = p_date, start_time = p_start where id = p_job;
 end $$;
@@ -1388,7 +1404,8 @@ revoke execute on function public.volunteer_board(), public.join_job(uuid, date,
   public.admin_publish_thanks(uuid, uuid, boolean) from public, anon;
 
 -- Internal helpers shouldn't be callable from the website.
-revoke execute on function public.trg_job_spots_guard(), public.crew_others(uuid, uuid) from public, anon, authenticated;
+revoke execute on function public.trg_job_spots_guard(), public.crew_others(uuid, uuid),
+  public.busy_then(uuid, uuid, date, text, int) from public, anon, authenticated;
 revoke execute on function public.handle_new_user(), public.trg_profile_new(), public.trg_profile_status(),
   public.trg_job_new(), public.trg_job_change(), public.trg_signup_new(), public.trg_signup_gone(),
   public.notify(uuid, text, uuid, text, text, boolean, text), public.notify_admins(text, uuid, text, text, boolean, text),
